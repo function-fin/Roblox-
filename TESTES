@@ -66,31 +66,7 @@ local function SaveJSON(fileName, data)
     if writefile then pcall(function() writefile(fileName, HttpService:JSONEncode(data)) end) end
 end
 
-local cached = LoadJSON(EMOTE_CACHE_FILE, nil)
-if cached and #cached > 0 then
-    allEmotes = cached
-else
-    local g = pcall(function() return HttpService:JSONDecode(game:HttpGet(GITHUB_URL)).data end)
-    if g and type(g) == "table" then
-        for _, item in ipairs(g) do
-            local id = tonumber(item.id)
-            if id and id > 0 then table.insert(allEmotes, {id = id, name = item.name or ("Emote_" .. id)}) end
-        end
-    end
-    if #allEmotes > 0 then SaveJSON(EMOTE_CACHE_FILE, allEmotes) end
-end
-
-local loadedCategories = LoadJSON(CATEGORIES_FILE, { categories = {} })
-if loadedCategories and loadedCategories.categories then emoteData.categories = loadedCategories.categories end
-
-local loadedStarred = LoadJSON(STARRED_FILE, {})
-if loadedStarred and type(loadedStarred) == "table" then starredEmotes = loadedStarred end
-
-local function RebuildIndex()
-    emoteIndexById = {}
-    for _, e in ipairs(allEmotes) do emoteIndexById[tostring(e.id)] = e end
-end
-
+--// CARREGAMENTO COM FALLBACK
 local function FetchFromAPI(keyword)
     local out = {}
     local ok, pages = pcall(function()
@@ -111,6 +87,47 @@ local function FetchFromAPI(keyword)
         end
     end
     return out
+end
+
+local cached = LoadJSON(EMOTE_CACHE_FILE, nil)
+if cached and #cached > 0 then
+    allEmotes = cached
+else
+    local g = pcall(function() return HttpService:JSONDecode(game:HttpGet(GITHUB_URL)).data end)
+    
+    if g and type(g) == "table" then
+        for _, item in ipairs(g) do
+            local id = tonumber(item.id)
+            if id and id > 0 then table.insert(allEmotes, {id = id, name = item.name or ("Emote_" .. id)}) end
+        end
+    end
+    
+    if #allEmotes == 0 then
+        local apiList = FetchFromAPI("")
+        if apiList and #apiList > 0 then allEmotes = apiList end
+    end
+    
+    if #allEmotes == 0 then
+        allEmotes = {
+            {id = 3360686498, name = "Stadium"},
+            {id = 3360692915, name = "Tilt"},
+            {id = 3576968026, name = "Shrug"},
+            {id = 3360689775, name = "Salute"}
+        }
+    end
+    
+    if #allEmotes > 0 then SaveJSON(EMOTE_CACHE_FILE, allEmotes) end
+end
+
+local loadedCategories = LoadJSON(CATEGORIES_FILE, { categories = {} })
+if loadedCategories and loadedCategories.categories then emoteData.categories = loadedCategories.categories end
+
+local loadedStarred = LoadJSON(STARRED_FILE, {})
+if loadedStarred and type(loadedStarred) == "table" then starredEmotes = loadedStarred end
+
+local function RebuildIndex()
+    emoteIndexById = {}
+    for _, e in ipairs(allEmotes) do emoteIndexById[tostring(e.id)] = e end
 end
 
 local function smartSearchMatch(name, term)
@@ -186,7 +203,6 @@ local function LoadTrack(id)
         local animator = hum:FindFirstChildOfClass("Animator")
         if animator then
             
-            -- Limita a 6 animações simultâneas para não crashar o Roblox
             if #ActiveTracks >= 6 then
                 local oldestTrack = table.remove(ActiveTracks, 1)
                 if oldestTrack and oldestTrack.IsPlaying then
@@ -206,7 +222,8 @@ local function LoadTrack(id)
             anim.AnimationId = animId
             local track = animator:LoadAnimation(anim)
             
-            track.Priority = Enum.AnimationPriority.Idle 
+            -- CORREÇÃO: Mudar para Action para permitir sobreposição
+            track.Priority = Enum.AnimationPriority.Action 
             track.Looped = true
             track:Play(0.1, 1, Settings.Speed)
             
@@ -1246,9 +1263,7 @@ buildCategoriesMenu()
 loadPage(1)
 renderRadialState()
 
---------------------------------------------------
--- [SPWN] ADAPTADOR PERSISTENTE
---------------------------------------------------
+--// SISTEMA SPWN (MANTIDO)
 task.spawn(function()
     local scriptId = "EmoteRadialScript"
     local scriptConfig = {
@@ -1256,7 +1271,6 @@ task.spawn(function()
         Category = "Emote Radial Hybrid",
         GuiObject = screenGui,
         OnDestroy = function()
-            -- Para as animações ativas e limpa tracks
             for _, track in ipairs(ActiveTracks) do
                 pcall(function()
                     if track.IsPlaying then track:Stop(0.1) end
@@ -1266,11 +1280,9 @@ task.spawn(function()
         end
     }
 
-    -- Garante a persistência global na memória
     _G.ScriptManagerQueue = _G.ScriptManagerQueue or {}
     _G.RegisteredScriptDatabase = _G.RegisteredScriptDatabase or {}
 
-    -- [SPWN] Lê visibilidade persistida em vez de hardcoded true
     local persistedVis = screenGui:GetAttribute("SPWN_ManagedVisibility")
 
     _G.RegisteredScriptDatabase[scriptId] = {
@@ -1297,3 +1309,5 @@ task.spawn(function()
         _G.ScriptManager.RegisterScript(scriptId, scriptConfig)
     end
 end)
+
+print("✅ [7yd7] Script atualizado com SPWN + Fallback Triplo + Priority Action!")
