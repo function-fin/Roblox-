@@ -1,7 +1,7 @@
 --[[
     Script: 7yd7 | Roda Radial de Emotes - VISUAL FINAL EXATO + MELHORIAS
     - Sobreposição de emotes igual ao SPWAM (Priority Action)
-    - Limite de 5 animações simultâneas (a mais antiga é parada se exceder)
+    - Limite de 6 animações simultâneas
     - Ao mover ou pular, todos os emotes param e voltam ao estado natural
     - Design preto e branco (Arcade) com divisórias brancas
     - Modal Salvar movido para a direita
@@ -188,7 +188,7 @@ local searchToken = 0
 
 local updateWheelSlots, loadPage, buildCategoriesMenu, openSaveModal
 
---// TRACK (Sobreposição com Priority Action e limite de 5)
+--// TRACK (Sobreposição com Priority Action, Peso 1 e limite de 6)
 local function LoadTrack(id)
     local char = LocalPlayer.Character
     if not char then return end
@@ -202,8 +202,8 @@ local function LoadTrack(id)
         local animator = hum:FindFirstChildOfClass("Animator")
         if animator then
             
-            -- Limita a 5 animações simultâneas para não bugar o Roblox
-            if #ActiveTracks >= 5 then
+            -- Limita a 6 animações simultâneas para não bugar o Roblox
+            if #ActiveTracks >= 6 then
                 local oldestTrack = table.remove(ActiveTracks, 1)
                 if oldestTrack and oldestTrack.IsPlaying then
                     oldestTrack:Stop(0.1)
@@ -223,10 +223,13 @@ local function LoadTrack(id)
             anim.AnimationId = animId
             local track = animator:LoadAnimation(anim)
             
-            -- Priority Action permite a sobreposição perfeita
+            -- Prioridade Action permite a sobreposição perfeita com outras animações
             track.Priority = Enum.AnimationPriority.Action
             track.Looped = true
-            track:Play()
+            
+            -- Toca a animação e força o peso para 1 (igualando ao peso do Brookhaven, etc)
+            track:Play(0.1, 1, Settings.Speed)
+            track:AdjustWeight(1, 0)
             
             table.insert(ActiveTracks, track)
         end
@@ -1268,4 +1271,4 @@ buildCategoriesMenu()
 loadPage(1)
 renderRadialState()
 
-print("✅ [7yd7] Script atualizado com limite de 5 sobreposições! Emotes não são mais interrompidos abruptamente.")
+print("✅ [7yd7] Script atualizado com sobreposição definitiva (Priority Action + Weight 1).")
