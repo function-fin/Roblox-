@@ -248,7 +248,14 @@ screenGui.ResetOnSpawn = false
 screenGui.IgnoreGuiInset = true
 screenGui.Parent = parentTarget
 
+-- [SPWN] Atributos de identificação persistente
+screenGui:SetAttribute("SPWN_ManagedScriptID", "EmoteRadialScript")
+screenGui:SetAttribute("SPWN_ManagedScriptName", "Emote Radial Hybrid")
+screenGui:SetAttribute("SPWN_ManagedScriptCategory", "Emote Radial Hybrid")
+
+-- [SPWN] Renomeado para OpenToggleButton (o Manager atua nele)
 local toggleButton = Instance.new("ImageButton")
+toggleButton.Name = "OpenToggleButton"
 toggleButton.Size = UDim2.new(0, 45, 0, 45) 
 toggleButton.AnchorPoint = Vector2.new(0.5, 0.5)
 toggleButton.Position = UDim2.new(0.5, 0, 0, 40) 
@@ -1238,3 +1245,55 @@ end
 buildCategoriesMenu()
 loadPage(1)
 renderRadialState()
+
+--------------------------------------------------
+-- [SPWN] ADAPTADOR PERSISTENTE
+--------------------------------------------------
+task.spawn(function()
+    local scriptId = "EmoteRadialScript"
+    local scriptConfig = {
+        Name = "Emote Radial Hybrid",
+        Category = "Emote Radial Hybrid",
+        GuiObject = screenGui,
+        OnDestroy = function()
+            -- Para as animações ativas e limpa tracks
+            for _, track in ipairs(ActiveTracks) do
+                pcall(function()
+                    if track.IsPlaying then track:Stop(0.1) end
+                end)
+            end
+            ActiveTracks = {}
+        end
+    }
+
+    -- Garante a persistência global na memória
+    _G.ScriptManagerQueue = _G.ScriptManagerQueue or {}
+    _G.RegisteredScriptDatabase = _G.RegisteredScriptDatabase or {}
+
+    -- [SPWN] Lê visibilidade persistida em vez de hardcoded true
+    local persistedVis = screenGui:GetAttribute("SPWN_ManagedVisibility")
+
+    _G.RegisteredScriptDatabase[scriptId] = {
+        Name = scriptConfig.Name,
+        Category = scriptConfig.Category,
+        GuiObject = scriptConfig.GuiObject,
+        IsVisible = (persistedVis == nil) and true or persistedVis,
+        OnDestroy = scriptConfig.OnDestroy
+    }
+
+    local exists = false
+    for _, item in ipairs(_G.ScriptManagerQueue) do
+        if item.id == scriptId then
+            exists = true
+            item.config = scriptConfig
+            break
+        end
+    end
+    if not exists then
+        table.insert(_G.ScriptManagerQueue, {id = scriptId, config = scriptConfig})
+    end
+
+    if _G.ScriptManager and type(_G.ScriptManager.RegisterScript) == "function" then
+        _G.ScriptManager.RegisterScript(scriptId, scriptConfig)
+    end
+end)
