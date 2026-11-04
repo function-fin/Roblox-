@@ -1,16 +1,3 @@
---[[
-    Script: 7yd7 | Roda Radial de Emotes - VISUAL FINAL EXATO + MELHORIAS
-    - Forçando a prioridade mínima (Idle) para NÃO sobrepor emotes nativos
-    - Os emotes nativos do jogo sempre tocarão por cima, sem misturar o esqueleto
-    - Ao mover ou pular, todos os emotes param e voltam ao estado natural
-    - Design preto e branco (Arcade) com divisórias brancas
-    - Modal Salvar movido para a direita
-    - Categorias e Favoritos (Estrela) salvos em JSON
-    - Botão Externo no topo central, 15% menor, esconde ao abrir
-    - Ordem de Categoria preservada por fatia
-    - Sistema de Notificação (Toast) ao salvar emote
-]]
-
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -34,7 +21,6 @@ end)
 
 local Settings = { Speed = 1, StopOnMove = true }
 
---// ASSETS
 local ID_CARTUCHO_SEMBORDA = "rbxassetid://96618641654782"
 local ID_BTN_DOCUMENTO = "rbxassetid://76204370315940"
 local ID_BTN_EXTERNO = "rbxassetid://115103675836200"
@@ -175,7 +161,6 @@ end
 
 RebuildIndex()
 
---// STATE
 local ActiveTracks = {} 
 local currentCategory = "All"
 local currentPage = 1
@@ -188,7 +173,6 @@ local searchToken = 0
 
 local updateWheelSlots, loadPage, buildCategoriesMenu, openSaveModal
 
---// TRACK (Forçando Prioridade Mínima - Idle)
 local function LoadTrack(id)
     local char = LocalPlayer.Character
     if not char then return end
@@ -222,10 +206,6 @@ local function LoadTrack(id)
             anim.AnimationId = animId
             local track = animator:LoadAnimation(anim)
             
-            -- AQUI ESTÁ A MÁGICA:
-            -- Colocamos em Idle (Prioridade 1) para que os emotes nativos dos jogos
-            -- (que geralmente usam Action - Prioridade 3) toquem POR CIMA, 
-            -- sem quebrar os ossos (sem o efeito híbrido).
             track.Priority = Enum.AnimationPriority.Idle 
             track.Looped = true
             track:Play(0.1, 1, Settings.Speed)
@@ -235,7 +215,6 @@ local function LoadTrack(id)
     end)
 end
 
---// CONTROLE DE MOVIMENTO (Parar todos ao andar/pular)
 RunService.RenderStepped:Connect(function()
     if character and character:FindFirstChild("HumanoidRootPart") then
         local root = character.HumanoidRootPart
@@ -255,7 +234,6 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
---// PARENT GUI
 local success, parentTarget = pcall(function()
     if gethui then return gethui()
     elseif syn and syn.protect_gui then
@@ -270,7 +248,6 @@ screenGui.ResetOnSpawn = false
 screenGui.IgnoreGuiInset = true
 screenGui.Parent = parentTarget
 
---// BOTÃO EXTERNO
 local toggleButton = Instance.new("ImageButton")
 toggleButton.Size = UDim2.new(0, 45, 0, 45) 
 toggleButton.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -307,7 +284,6 @@ toggleButton.MouseButton1Click:Connect(function()
     toggleButton.Visible = false
 end)
 
---// RODA RADIAL
 local WHEEL_SIZE = 276
 local wheelFrame = Instance.new("Frame")
 wheelFrame.Size = UDim2.fromOffset(WHEEL_SIZE, WHEEL_SIZE)
@@ -316,7 +292,6 @@ wheelFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 wheelFrame.BackgroundTransparency = 1
 wheelFrame.Parent = mainContainer
 
---// BARRA SUPERIOR
 local topBar = Instance.new("Frame")
 topBar.Size = UDim2.fromOffset(372, 38)
 topBar.AnchorPoint = Vector2.new(0.5, 1)
@@ -367,7 +342,6 @@ cartridgeButton.Visible = false
 cartridgeButton.Parent = topBar
 cartridgeButton.MouseButton1Click:Connect(function() if selectedEmoteItem then openSaveModal() end end)
 
---// BARRA INFERIOR
 local navContainer = Instance.new("Frame")
 navContainer.Size = UDim2.fromOffset(240, 34)
 navContainer.AnchorPoint = Vector2.new(0.5, 0)
@@ -435,7 +409,6 @@ nextButton.Image = ID_SETA_DIREITA
 nextButton.LayoutOrder = 5
 nextButton.Parent = navContainer
 
---// PAINEL LATERAL
 local sidePanel = Instance.new("Frame")
 sidePanel.Size = UDim2.fromOffset(180, 276)
 sidePanel.AnchorPoint = Vector2.new(1, 0.5)
@@ -579,7 +552,6 @@ removeCatGlobalBtn.MouseButton1Click:Connect(function()
     buildCategoriesMenu(); loadPage(1)
 end)
 
---// SISTEMA DE NOTIFICAÇÃO (TOAST)
 local function ShowToast(catName)
     local existing = screenGui:FindFirstChild("ToastNotification")
     if existing then existing:Destroy() end
@@ -628,7 +600,6 @@ local function ShowToast(catName)
     end)
 end
 
---// MODAL SALVAR
 local saveModal = Instance.new("Frame")
 saveModal.Size = UDim2.fromOffset(336, 240)
 saveModal.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -767,7 +738,6 @@ saveConfirmBtn.MouseButton1Click:Connect(function()
     end
 end)
 
---// SISTEMA VISUAL RADIAL
 local outerCircle = Instance.new("Frame")
 outerCircle.Size = UDim2.new(1, 0, 1, 0)
 outerCircle.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
@@ -925,7 +895,6 @@ local function getSectorFromPosition(position)
     return angleToSector(math.deg(math.atan2(dy, dx)))
 end
 
---// SLOTS
 for i = 1, TOTAL_SLOTS do
     local slotAngleDeg = ((i - 1) * SLICE_ANGLE) - 90
     local slotAngleRad = math.rad(slotAngleDeg)
@@ -1269,5 +1238,3 @@ end
 buildCategoriesMenu()
 loadPage(1)
 renderRadialState()
-
-print("✅ [7yd7] Script atualizado com Prioridade Idle (Mínima) para evitar sobreposição híbrida!")
