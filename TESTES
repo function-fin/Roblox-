@@ -1,12 +1,12 @@
 --[[
-    Script: 7yd7 | Roda Radial de Emotes (Visual da Imagem)
-    - O setor inteiro fica cinza escuro com um efeito de "rabisco"
-    - O ícone do emote fica BRANCO PURO por cima do rabisco
-    - Divisores brancos finos
-    - Círculo central preto com texto branco
+    Script: 7yd7 | Roda Radial de Emotes - VISUAL FINAL EXATO
+    - Design preto e branco (Arcade) com divisórias brancas
+    - Sistema Radial funcional (detecção por ângulo e distância)
+    - Highlight de setor: Cinza (rgb 128, 128, 128) atrás do ícone
+    - Ícone do emote sempre acima do highlight
+    - Busca híbrida, categorias, paginação, save modal e play de emote
 ]]
 
---// SERVICES
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -29,7 +29,7 @@ end)
 
 local Settings = { Speed = 1, StopOnMove = true }
 
---// ASSETS (originais)
+--// ASSETS (Mantidos os originais)
 local ID_CARTUCHO_SEMBORDA = "rbxassetid://96618641654782"
 local ID_BTN_DOCUMENTO = "rbxassetid://76204370315940"
 local ID_BTN_EXTERNO = "rbxassetid://115103675836200"
@@ -44,7 +44,7 @@ local ID_SETA_DIREITA = "rbxassetid://138794689086376"
 
 local MARGIN = 14
 
---// PERSISTÊNCIA / BANCO DE EMOTES (mesma lógica original)
+--// PERSISTÊNCIA E BANCO DE DADOS
 local FOLDER = "7yd7"
 local EMOTE_CACHE_FILE = FOLDER .. "/EmoteListCache.json"
 local GITHUB_URL = "https://raw.githubusercontent.com/7yd7/sniper-Emote/refs/heads/test/EmoteSniper.json"
@@ -131,7 +131,8 @@ local function applySearchLocal(term)
     if isId then
         local item = emoteIndexById[term]
         if item then filteredEmotes = {item}; return 1 end
-        filteredEmotes = {}; return 0
+        filteredEmotes = {}
+        return 0
     end
     local out = {}
     for _, e in ipairs(allEmotes) do
@@ -143,14 +144,8 @@ end
 
 local function mergeNoDupes(listA, listB)
     local seen, out = {}, {}
-    for _, e in ipairs(listA) do
-        local k = tostring(e.id)
-        if not seen[k] then seen[k] = true; table.insert(out, e) end
-    end
-    for _, e in ipairs(listB) do
-        local k = tostring(e.id)
-        if not seen[k] then seen[k] = true; table.insert(out, e) end
-    end
+    for _, e in ipairs(listA) do local k = tostring(e.id); if not seen[k] then seen[k] = true; table.insert(out, e) end end
+    for _, e in ipairs(listB) do local k = tostring(e.id); if not seen[k] then seen[k] = true; table.insert(out, e) end end
     return out
 end
 
@@ -160,23 +155,21 @@ local function getEmoteName(id)
     return "Emote_" .. tostring(id)
 end
 
---// CARREGAMENTO
-print("[7yd7] Carregando emotes...")
+-- Carregamento inicial
 local loaded = false
 local cached = LoadEmoteCache()
-if cached then allEmotes = cached; RebuildIndex(); loaded = true; print("[7yd7] ✅ Cache:", #allEmotes) end
+if cached then allEmotes = cached; RebuildIndex(); loaded = true end
 if not loaded then
     local g = FetchFromGitHub()
-    if g then allEmotes = g; RebuildIndex(); SaveEmoteCache(); loaded = true; print("[7yd7] ✅ GitHub:", #allEmotes) end
+    if g then allEmotes = g; RebuildIndex(); SaveEmoteCache(); loaded = true end
 end
 if not loaded then
     local a = FetchFromAPI("")
-    if a and #a > 0 then allEmotes = a; RebuildIndex(); SaveEmoteCache(); loaded = true; print("[7yd7] ✅ API:", #allEmotes) end
+    if a and #a > 0 then allEmotes = a; RebuildIndex(); SaveEmoteCache(); loaded = true end
 end
 if not loaded then
-    allEmotes = { {id = 3360686498, name = "Stadium"}, {id = 3360692915, name = "Tilt"}, {id = 3576968026, name = "Shrug"}, {id = 3360689775, name = "Salute"} }
+    allEmotes = {{id = 3360686498, name = "Stadium"}, {id = 3360692915, name = "Tilt"}}
     RebuildIndex()
-    print("[7yd7] ⚠️ Fallback:", #allEmotes)
 end
 filteredEmotes = allEmotes
 
@@ -189,7 +182,7 @@ local totalPages = DEFAULT_TOTAL_PAGES
 local currentKeyword = ""
 local selectedEmoteItem = nil
 local catalogItems = {}
-local slotButtons, slotImages, slotTexts = {}, {}, {}
+local slotButtons, slotImages, slotHighlights, slotTexts = {}, {}, {}, {}
 local searchToken = 0
 
 local updateWheelSlots, loadPage, buildCategoriesMenu, openSaveModal
@@ -197,9 +190,13 @@ local updateWheelSlots, loadPage, buildCategoriesMenu, openSaveModal
 --// TRACK
 local function LoadTrack(id)
     if CurrentTrack then CurrentTrack:Stop(0.1) end
-    local animId = "rbxassetid://" .. tostring(id)
+    local animId
     local ok, result = pcall(function() return game:GetObjects("rbxassetid://" .. tostring(id)) end)
-    if ok and result and #result > 0 and result[1]:IsA("Animation") then animId = result[1].AnimationId end
+    if ok and result and #result > 0 and result[1]:IsA("Animation") then
+        animId = result[1].AnimationId
+    else
+        animId = "rbxassetid://" .. tostring(id)
+    end
     local newAnim = Instance.new("Animation")
     newAnim.AnimationId = animId
     local newTrack = humanoid:LoadAnimation(newAnim)
@@ -228,9 +225,7 @@ end)
 local success, parentTarget = pcall(function()
     if gethui then return gethui()
     elseif syn and syn.protect_gui then
-        local gui = Instance.new("ScreenGui")
-        syn.protect_gui(gui)
-        return gui
+        local gui = Instance.new("ScreenGui"); syn.protect_gui(gui); return gui
     else return CoreGui end
 end)
 if not success or not parentTarget then parentTarget = Players.LocalPlayer:WaitForChild("PlayerGui") end
@@ -254,7 +249,9 @@ local dragging, dragInput, dragStart, startPos
 toggleButton.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true; dragStart = input.Position; startPos = toggleButton.Position
-        input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end)
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
     end
 end)
 toggleButton.InputChanged:Connect(function(input)
@@ -275,7 +272,7 @@ mainContainer.Parent = screenGui
 
 toggleButton.MouseButton1Click:Connect(function() mainContainer.Visible = not mainContainer.Visible end)
 
---// GEOMETRIA RADIAL BASE
+--// RODA RADIAL
 local WHEEL_SIZE = 276
 local wheelFrame = Instance.new("Frame")
 wheelFrame.Size = UDim2.fromOffset(WHEEL_SIZE, WHEEL_SIZE)
@@ -333,6 +330,7 @@ cartridgeButton.BackgroundTransparency = 1
 cartridgeButton.Image = ID_CARTUCHO_SEMBORDA
 cartridgeButton.Visible = false
 cartridgeButton.Parent = topBar
+
 cartridgeButton.MouseButton1Click:Connect(function() if selectedEmoteItem then openSaveModal() end end)
 
 --// BARRA INFERIOR
@@ -403,7 +401,7 @@ nextButton.Image = ID_SETA_DIREITA
 nextButton.LayoutOrder = 5
 nextButton.Parent = navContainer
 
---// PAINEL LATERAL
+--// PAINEL LATERAL / MODAL / FUNÇÕES UI (Mantidos intactos)
 local sidePanel = Instance.new("Frame")
 sidePanel.Size = UDim2.fromOffset(180, 276)
 sidePanel.AnchorPoint = Vector2.new(1, 0.5)
@@ -522,39 +520,29 @@ docButton.MouseButton1Click:Connect(function() sidePanel.Visible = not sidePanel
 local function promptRenameCategory(oldName)
     local targetBtn = nil
     for _, child in ipairs(sideScrolling:GetChildren()) do
-        if child:IsA("TextButton") and child:GetAttribute("CategoryName") == oldName then targetBtn = child break end
+        if child:IsA("TextButton") and child:GetAttribute("CategoryName") == oldName then targetBtn = child; break end
     end
     if not targetBtn then return end
     local titleLabel = targetBtn:FindFirstChild("CatTitle")
     if not titleLabel then return end
 
     local textBox = Instance.new("TextBox")
-    textBox.Size = titleLabel.Size
-    textBox.Position = titleLabel.Position
-    textBox.BackgroundTransparency = 1
-    textBox.Text = oldName
-    textBox.TextColor3 = titleLabel.TextColor3
-    textBox.TextSize = titleLabel.TextSize
-    textBox.Font = titleLabel.Font
-    textBox.TextXAlignment = titleLabel.TextXAlignment
-    textBox.ClearTextOnFocus = false
-    textBox.Parent = targetBtn
-    titleLabel.Visible = false
-    textBox:CaptureFocus()
+    textBox.Size = titleLabel.Size; textBox.Position = titleLabel.Position
+    textBox.BackgroundTransparency = 1; textBox.Text = oldName
+    textBox.TextColor3 = titleLabel.TextColor3; textBox.TextSize = titleLabel.TextSize
+    textBox.Font = titleLabel.Font; textBox.TextXAlignment = titleLabel.TextXAlignment
+    textBox.ClearTextOnFocus = false; textBox.Parent = targetBtn
+    titleLabel.Visible = false; textBox:CaptureFocus()
 
     local finished = false
     local function finishRename(commit)
-        if finished then return end
-        finished = true
+        if finished then return end; finished = true
         if commit and textBox.Text ~= "" then
             local newName = textBox.Text
-            for _, cat in ipairs(emoteData.categories) do
-                if cat.name == oldName then cat.name = newName break end
-            end
+            for _, cat in ipairs(emoteData.categories) do if cat.name == oldName then cat.name = newName break end end
             if currentCategory == oldName then currentCategory = newName end
         end
-        textBox:Destroy()
-        buildCategoriesMenu()
+        textBox:Destroy(); buildCategoriesMenu()
     end
     textBox.FocusLost:Connect(function(enterPressed) finishRename(enterPressed) end)
 end
@@ -569,155 +557,84 @@ removeCatGlobalBtn.MouseButton1Click:Connect(function()
     for i, cat in ipairs(emoteData.categories) do
         if cat.name == currentCategory then table.remove(emoteData.categories, i); currentCategory = "All"; break end
     end
-    buildCategoriesMenu()
-    loadPage(1)
+    buildCategoriesMenu(); loadPage(1)
 end)
 
---// MODAL SALVAR
 local saveModal = Instance.new("Frame")
 saveModal.Size = UDim2.fromOffset(336, 240)
 saveModal.AnchorPoint = Vector2.new(0.5, 0.5)
 saveModal.Position = UDim2.new(0.5, 0, 0.5, 0)
 saveModal.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-saveModal.Visible = false
-saveModal.ZIndex = 10
-saveModal.Parent = mainContainer
+saveModal.Visible = false; saveModal.ZIndex = 10; saveModal.Parent = mainContainer
 Instance.new("UICorner", saveModal).CornerRadius = UDim.new(0, 10)
 local mStroke = Instance.new("UIStroke", saveModal)
-mStroke.Color = Color3.fromRGB(255, 255, 255)
-mStroke.Thickness = 2
-mStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+mStroke.Color = Color3.fromRGB(255, 255, 255); mStroke.Thickness = 2; mStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
 local modalHeader = Instance.new("Frame")
-modalHeader.Size = UDim2.new(1, 0, 0, 46)
-modalHeader.BackgroundTransparency = 1
-modalHeader.ZIndex = 11
-modalHeader.Parent = saveModal
+modalHeader.Size = UDim2.new(1, 0, 0, 46); modalHeader.BackgroundTransparency = 1; modalHeader.ZIndex = 11; modalHeader.Parent = saveModal
 
 local modalTitleIcon = Instance.new("ImageLabel")
-modalTitleIcon.Size = UDim2.fromOffset(26, 26)
-modalTitleIcon.Position = UDim2.new(0, 14, 0.5, -13)
-modalTitleIcon.BackgroundTransparency = 1
-modalTitleIcon.Image = ID_CARTUCHO_SALVAR
-modalTitleIcon.ZIndex = 11
-modalTitleIcon.Parent = modalHeader
+modalTitleIcon.Size = UDim2.fromOffset(26, 26); modalTitleIcon.Position = UDim2.new(0, 14, 0.5, -13)
+modalTitleIcon.BackgroundTransparency = 1; modalTitleIcon.Image = ID_CARTUCHO_SALVAR; modalTitleIcon.ZIndex = 11; modalTitleIcon.Parent = modalHeader
 
 local modalTitle = Instance.new("TextLabel")
-modalTitle.Size = UDim2.new(1, -108, 1, 0)
-modalTitle.Position = UDim2.new(0, 48, 0, 0)
-modalTitle.BackgroundTransparency = 1
-modalTitle.Text = "Salvar em Categoria"
-modalTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-modalTitle.TextSize = 18
-modalTitle.Font = Enum.Font.Arcade
-modalTitle.TextXAlignment = Enum.TextXAlignment.Left
-modalTitle.ZIndex = 11
-modalTitle.Parent = modalHeader
+modalTitle.Size = UDim2.new(1, -108, 1, 0); modalTitle.Position = UDim2.new(0, 48, 0, 0)
+modalTitle.BackgroundTransparency = 1; modalTitle.Text = "Salvar em Categoria"; modalTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+modalTitle.TextSize = 18; modalTitle.Font = Enum.Font.Arcade; modalTitle.TextXAlignment = Enum.TextXAlignment.Left
+modalTitle.ZIndex = 11; modalTitle.Parent = modalHeader
 
 local closeModalBtn = Instance.new("ImageButton")
-closeModalBtn.Size = UDim2.fromOffset(26, 26)
-closeModalBtn.AnchorPoint = Vector2.new(1, 0.5)
-closeModalBtn.Position = UDim2.new(1, -12, 0.5, 0)
-closeModalBtn.BackgroundTransparency = 1
-closeModalBtn.Image = ID_FECHAR_X
-closeModalBtn.ZIndex = 11
-closeModalBtn.Parent = modalHeader
+closeModalBtn.Size = UDim2.fromOffset(26, 26); closeModalBtn.AnchorPoint = Vector2.new(1, 0.5); closeModalBtn.Position = UDim2.new(1, -12, 0.5, 0)
+closeModalBtn.BackgroundTransparency = 1; closeModalBtn.Image = ID_FECHAR_X; closeModalBtn.ZIndex = 11; closeModalBtn.Parent = modalHeader
 closeModalBtn.MouseButton1Click:Connect(function() saveModal.Visible = false end)
 
 local modalDivider = Instance.new("Frame")
-modalDivider.Size = UDim2.new(1, -29, 0, 1)
-modalDivider.Position = UDim2.new(0, 14, 0, 46)
-modalDivider.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-modalDivider.BorderSizePixel = 0
-modalDivider.ZIndex = 11
-modalDivider.Parent = saveModal
+modalDivider.Size = UDim2.new(1, -29, 0, 1); modalDivider.Position = UDim2.new(0, 14, 0, 46)
+modalDivider.BackgroundColor3 = Color3.fromRGB(255, 255, 255); modalDivider.BorderSizePixel = 0; modalDivider.ZIndex = 11; modalDivider.Parent = saveModal
 
 local modalSubtitle = Instance.new("TextLabel")
-modalSubtitle.Size = UDim2.new(1, -29, 0, 24)
-modalSubtitle.Position = UDim2.new(0, 14, 0, 50)
-modalSubtitle.BackgroundTransparency = 1
-modalSubtitle.Text = "Escolha uma categoria para salvar o emote:"
-modalSubtitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-modalSubtitle.TextSize = 12
-modalSubtitle.Font = Enum.Font.Arcade
-modalSubtitle.TextXAlignment = Enum.TextXAlignment.Left
-modalSubtitle.ZIndex = 11
-modalSubtitle.Parent = saveModal
+modalSubtitle.Size = UDim2.new(1, -29, 0, 24); modalSubtitle.Position = UDim2.new(0, 14, 0, 50)
+modalSubtitle.BackgroundTransparency = 1; modalSubtitle.Text = "Escolha uma categoria para salvar o emote:"
+modalSubtitle.TextColor3 = Color3.fromRGB(255, 255, 255); modalSubtitle.TextSize = 12; modalSubtitle.Font = Enum.Font.Arcade
+modalSubtitle.TextXAlignment = Enum.TextXAlignment.Left; modalSubtitle.ZIndex = 11; modalSubtitle.Parent = saveModal
 
 local modalScrolling = Instance.new("ScrollingFrame")
-modalScrolling.Size = UDim2.new(1, -29, 1, -146)
-modalScrolling.Position = UDim2.new(0, 14, 0, 79)
-modalScrolling.BackgroundTransparency = 1
-modalScrolling.ScrollBarThickness = 3
-modalScrolling.AutomaticCanvasSize = Enum.AutomaticSize.Y
-modalScrolling.CanvasSize = UDim2.new(0, 0, 0, 0)
-modalScrolling.ClipsDescendants = true
-modalScrolling.ZIndex = 11
-modalScrolling.Parent = saveModal
+modalScrolling.Size = UDim2.new(1, -29, 1, -146); modalScrolling.Position = UDim2.new(0, 14, 0, 79)
+modalScrolling.BackgroundTransparency = 1; modalScrolling.ScrollBarThickness = 3
+modalScrolling.AutomaticCanvasSize = Enum.AutomaticSize.Y; modalScrolling.CanvasSize = UDim2.new(0, 0, 0, 0)
+modalScrolling.ClipsDescendants = true; modalScrolling.ZIndex = 11; modalScrolling.Parent = saveModal
 
 local mListLayout = Instance.new("UIListLayout")
-mListLayout.Padding = UDim.new(0, 5)
-mListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-mListLayout.Parent = modalScrolling
-
+mListLayout.Padding = UDim.new(0, 5); mListLayout.SortOrder = Enum.SortOrder.LayoutOrder; mListLayout.Parent = modalScrolling
 local mPadding = Instance.new("UIPadding")
-mPadding.PaddingTop = UDim.new(0, 3)
-mPadding.PaddingBottom = UDim.new(0, 5)
-mPadding.PaddingLeft = UDim.new(0, 3)
-mPadding.PaddingRight = UDim.new(0, 7)
-mPadding.Parent = modalScrolling
+mPadding.PaddingTop = UDim.new(0, 3); mPadding.PaddingBottom = UDim.new(0, 5); mPadding.PaddingLeft = UDim.new(0, 3); mPadding.PaddingRight = UDim.new(0, 7); mPadding.Parent = modalScrolling
 
 local targetCategoryToSave = nil
 
 openSaveModal = function()
     for _, child in ipairs(modalScrolling:GetChildren()) do if child:IsA("TextButton") then child:Destroy() end end
     targetCategoryToSave = nil
-
     for i, cat in ipairs(emoteData.categories) do
         local catBtn = Instance.new("TextButton")
-        catBtn.Size = UDim2.new(1, 0, 0, 31)
-        catBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-        catBtn.AutoButtonColor = false
-        catBtn.Text = ""
-        catBtn.LayoutOrder = i
-        catBtn.ZIndex = 12
-        catBtn.Parent = modalScrolling
+        catBtn.Size = UDim2.new(1, 0, 0, 31); catBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        catBtn.AutoButtonColor = false; catBtn.Text = ""; catBtn.LayoutOrder = i; catBtn.ZIndex = 12; catBtn.Parent = modalScrolling
         Instance.new("UICorner", catBtn).CornerRadius = UDim.new(0, 7)
         local cs = Instance.new("UIStroke", catBtn)
-        cs.Color = Color3.fromRGB(255, 255, 255)
-        cs.Thickness = 1.8
-        cs.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        cs.Color = Color3.fromRGB(255, 255, 255); cs.Thickness = 1.8; cs.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
         local catSun = Instance.new("ImageLabel")
-        catSun.Size = UDim2.fromOffset(17, 17)
-        catSun.Position = UDim2.new(0, 12, 0.5, -8)
-        catSun.BackgroundTransparency = 1
-        catSun.Image = ID_ICONE_SOL
-        catSun.ZIndex = 12
-        catSun.Parent = catBtn
+        catSun.Size = UDim2.fromOffset(17, 17); catSun.Position = UDim2.new(0, 12, 0.5, -8)
+        catSun.BackgroundTransparency = 1; catSun.Image = ID_ICONE_SOL; catSun.ZIndex = 12; catSun.Parent = catBtn
 
         local catText = Instance.new("TextLabel")
-        catText.Size = UDim2.new(1, -60, 1, 0)
-        catText.Position = UDim2.new(0, 38, 0, 0)
-        catText.BackgroundTransparency = 1
-        catText.Text = cat.name
-        catText.TextColor3 = Color3.fromRGB(255, 255, 255)
-        catText.TextSize = 13
-        catText.Font = Enum.Font.Arcade
-        catText.TextXAlignment = Enum.TextXAlignment.Left
-        catText.ZIndex = 12
-        catText.Parent = catBtn
+        catText.Size = UDim2.new(1, -60, 1, 0); catText.Position = UDim2.new(0, 38, 0, 0)
+        catText.BackgroundTransparency = 1; catText.Text = cat.name; catText.TextColor3 = Color3.fromRGB(255, 255, 255)
+        catText.TextSize = 13; catText.Font = Enum.Font.Arcade; catText.TextXAlignment = Enum.TextXAlignment.Left; catText.ZIndex = 12; catText.Parent = catBtn
 
         local catArrow = Instance.new("TextLabel")
-        catArrow.Size = UDim2.new(0, 19, 1, 0)
-        catArrow.Position = UDim2.new(1, -24, 0, 0)
-        catArrow.BackgroundTransparency = 1
-        catArrow.Text = ">"
-        catArrow.TextColor3 = Color3.fromRGB(255, 255, 255)
-        catArrow.TextSize = 13
-        catArrow.Font = Enum.Font.Arcade
-        catArrow.ZIndex = 12
-        catArrow.Parent = catBtn
+        catArrow.Size = UDim2.new(0, 19, 1, 0); catArrow.Position = UDim2.new(1, -24, 0, 0)
+        catArrow.BackgroundTransparency = 1; catArrow.Text = ">"; catArrow.TextColor3 = Color3.fromRGB(255, 255, 255)
+        catArrow.TextSize = 13; catArrow.Font = Enum.Font.Arcade; catArrow.ZIndex = 12; catArrow.Parent = catBtn
 
         catBtn.MouseButton1Click:Connect(function()
             targetCategoryToSave = cat.name
@@ -737,38 +654,22 @@ openSaveModal = function()
 end
 
 local saveConfirmBtn = Instance.new("TextButton")
-saveConfirmBtn.Size = UDim2.new(1, -29, 0, 38)
-saveConfirmBtn.Position = UDim2.new(0, 14, 1, -48)
-saveConfirmBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-saveConfirmBtn.AutoButtonColor = false
-saveConfirmBtn.Text = ""
-saveConfirmBtn.ZIndex = 11
-saveConfirmBtn.Parent = saveModal
+saveConfirmBtn.Size = UDim2.new(1, -29, 0, 38); saveConfirmBtn.Position = UDim2.new(0, 14, 1, -48)
+saveConfirmBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0); saveConfirmBtn.AutoButtonColor = false
+saveConfirmBtn.Text = ""; saveConfirmBtn.ZIndex = 11; saveConfirmBtn.Parent = saveModal
 Instance.new("UICorner", saveConfirmBtn).CornerRadius = UDim.new(0, 7)
 local sStroke = Instance.new("UIStroke", saveConfirmBtn)
-sStroke.Color = Color3.fromRGB(255, 255, 255)
-sStroke.Thickness = 1.8
-sStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+sStroke.Color = Color3.fromRGB(255, 255, 255); sStroke.Thickness = 1.8; sStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
 local saveConfirmIcon = Instance.new("ImageLabel")
-saveConfirmIcon.Size = UDim2.fromOffset(22, 22)
-saveConfirmIcon.Position = UDim2.new(0.5, -46, 0.5, -11)
-saveConfirmIcon.BackgroundTransparency = 1
-saveConfirmIcon.Image = ID_CARTUCHO_SALVAR
-saveConfirmIcon.ZIndex = 12
-saveConfirmIcon.Parent = saveConfirmBtn
+saveConfirmIcon.Size = UDim2.fromOffset(22, 22); saveConfirmIcon.Position = UDim2.new(0.5, -46, 0.5, -11)
+saveConfirmIcon.BackgroundTransparency = 1; saveConfirmIcon.Image = ID_CARTUCHO_SALVAR; saveConfirmIcon.ZIndex = 12; saveConfirmIcon.Parent = saveConfirmBtn
 
 local saveConfirmText = Instance.new("TextLabel")
-saveConfirmText.Size = UDim2.new(0, 84, 1, 0)
-saveConfirmText.Position = UDim2.new(0.5, -17, 0, 0)
-saveConfirmText.BackgroundTransparency = 1
-saveConfirmText.Text = "Salvar"
-saveConfirmText.TextColor3 = Color3.fromRGB(255, 255, 255)
-saveConfirmText.TextSize = 16
-saveConfirmText.Font = Enum.Font.Arcade
-saveConfirmText.TextXAlignment = Enum.TextXAlignment.Left
-saveConfirmText.ZIndex = 12
-saveConfirmText.Parent = saveConfirmBtn
+saveConfirmText.Size = UDim2.new(0, 84, 1, 0); saveConfirmText.Position = UDim2.new(0.5, -17, 0, 0)
+saveConfirmText.BackgroundTransparency = 1; saveConfirmText.Text = "Salvar"; saveConfirmText.TextColor3 = Color3.fromRGB(255, 255, 255)
+saveConfirmText.TextSize = 16; saveConfirmText.Font = Enum.Font.Arcade; saveConfirmText.TextXAlignment = Enum.TextXAlignment.Left
+saveConfirmText.ZIndex = 12; saveConfirmText.Parent = saveConfirmBtn
 
 saveConfirmBtn.MouseButton1Click:Connect(function()
     if selectedEmoteItem and targetCategoryToSave then
@@ -785,38 +686,32 @@ saveConfirmBtn.MouseButton1Click:Connect(function()
                 break
             end
         end
-        saveModal.Visible = false
-        buildCategoriesMenu()
+        saveModal.Visible = false; buildCategoriesMenu()
         if currentCategory == targetCategoryToSave then loadPage(1) end
     end
 end)
 
 --// =====================================================================
---// ELEMENTOS VISUAIS DA RODA (CONFORME A IMAGEM)
+--// CONSTRUÇÃO VISUAL DA RODA + SISTEMA RADIAL
 --// =====================================================================
-local radiusTotal = WHEEL_SIZE / 2
-local CENTER_RATIO = 0.42
-local innerRadius = radiusTotal * CENTER_RATIO
-local outerRadius = radiusTotal
-local slotLabelRadius = (innerRadius + outerRadius) / 2
-local TOTAL_SLOTS = 8
-local SLICE_ANGLE = 360 / TOTAL_SLOTS
 
 local outerCircle = Instance.new("Frame")
 outerCircle.Size = UDim2.new(1, 0, 1, 0)
 outerCircle.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+outerCircle.ZIndex = 1
 outerCircle.Parent = wheelFrame
 Instance.new("UICorner", outerCircle).CornerRadius = UDim.new(0.5, 0)
 local outerStroke = Instance.new("UIStroke", outerCircle)
 outerStroke.Color = Color3.fromRGB(255, 255, 255)
 outerStroke.Thickness = 3
 
+local CENTER_RATIO = 0.42
 local centerCircle = Instance.new("Frame")
 centerCircle.Size = UDim2.new(CENTER_RATIO, 0, CENTER_RATIO, 0)
 centerCircle.AnchorPoint = Vector2.new(0.5, 0.5)
 centerCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
 centerCircle.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-centerCircle.ZIndex = 4
+centerCircle.ZIndex = 5
 centerCircle.Parent = wheelFrame
 Instance.new("UICorner", centerCircle).CornerRadius = UDim.new(0.5, 0)
 local centerStroke = Instance.new("UIStroke", centerCircle)
@@ -832,17 +727,26 @@ centerText.Text = "Selecione um\nemote"
 centerText.TextColor3 = Color3.fromRGB(255, 255, 255)
 centerText.TextScaled = true
 centerText.Font = Enum.Font.Arcade
-centerText.ZIndex = 5
+centerText.ZIndex = 6
 centerText.Parent = centerCircle
 
---// DIVISORES
+local radiusTotal = WHEEL_SIZE / 2
+local innerRadius = radiusTotal * CENTER_RATIO
+local outerRadius = radiusTotal
+local slotLabelRadius = (innerRadius + outerRadius) / 2
+local TOTAL_SLOTS = 8
+local SLICE_ANGLE = 360 / TOTAL_SLOTS
+
+--// DIVISORES DA RODA (Fundo Branco)
 for i = 1, TOTAL_SLOTS do
     local dividerAngleDeg = -90 + ((i - 1) * SLICE_ANGLE) - (SLICE_ANGLE / 2)
     local dividerAngleRad = math.rad(dividerAngleDeg)
+
     local x1 = radiusTotal + math.cos(dividerAngleRad) * innerRadius
     local y1 = radiusTotal + math.sin(dividerAngleRad) * innerRadius
     local x2 = radiusTotal + math.cos(dividerAngleRad) * outerRadius
     local y2 = radiusTotal + math.sin(dividerAngleRad) * outerRadius
+
     local dx, dy = x2 - x1, y2 - y1
     local lineLength = math.sqrt(dx * dx + dy * dy)
     local lineAngle = math.deg(math.atan2(dy, dx))
@@ -858,26 +762,23 @@ for i = 1, TOTAL_SLOTS do
     line.Parent = wheelFrame
 end
 
---// SISTEMA DE HIGHLIGHT COM RABISCO (SCRIBBLE)
--- O rabisco é gerado por várias linhas curvadas no espaço do setor, com uma
--- cor cinza forte e semi-transparente, posicionadas ABAIXO do ícone (ZIndex menor).
+--// FATIAS (HIGHLIGHT CINZA) - Ficam atrás dos ícones, sobre o fundo preto (ZIndex 2)
+local HOVER_COLOR = Color3.fromRGB(120, 120, 120)
+local HOVER_TRANSPARENCY = 0.2
+local SELECT_COLOR = Color3.fromRGB(120, 120, 120)
+local SELECT_TRANSPARENCY = 0.2 -- Cor cinza fixa para o "selecionado"
 
-local HOVER_ZINDEX_BASE = 4         -- fica acima do fundo preto mas abaixo dos ícones (ZIndex 6/7)
-local SCRIBBLE_COLOR = Color3.fromRGB(140, 140, 140)  -- Cinza forte
-local HOVER_BG_COLOR = Color3.fromRGB(90, 90, 90)     -- Fundo do setor no hover
-
-local sectorHoverGroups = {}  -- { [i] = {bg, scribbleParts...} }
+local sectorSlices = {}
+for i = 1, TOTAL_SLOTS do sectorSlices[i] = {} end
 
 local function angleToSector(angleDeg)
     local corrected = (angleDeg + 90 + (SLICE_ANGLE / 2)) % 360
     return math.floor(corrected / SLICE_ANGLE) + 1
 end
 
--- Constrói a fatia (mesma técnica pixel-run), mas agora com FUNDO + RABISCO
 local SLICE_STEP = 2
 for rowOffset = 0, (radiusTotal * 2) - 1, SLICE_STEP do
     local yPix = rowOffset - radiusTotal
-
     local currentSector = nil
     local startX = nil
 
@@ -893,127 +794,33 @@ for rowOffset = 0, (radiusTotal * 2) - 1, SLICE_STEP do
 
         if sector ~= currentSector then
             if currentSector then
-                local w = (colOffset - startX) + 0.5
-                if w > 0 then
-                    if not sectorHoverGroups[currentSector] then
-                        sectorHoverGroups[currentSector] = { bg = {}, scribble = {} }
-                    end
-
-                    -- Fundo base do setor
-                    local bg = Instance.new("Frame")
-                    bg.BorderSizePixel = 0
-                    bg.BackgroundColor3 = HOVER_BG_COLOR
-                    bg.BackgroundTransparency = 1
-                    bg.Position = UDim2.fromOffset(startX, rowOffset)
-                    bg.Size = UDim2.fromOffset(w, SLICE_STEP + 0.5)
-                    bg.ZIndex = HOVER_ZINDEX_BASE
-                    bg.Parent = wheelFrame
-                    table.insert(sectorHoverGroups[currentSector].bg, bg)
-
-                    -- Rabisco (apenas algumas linhas aleatórias por fatia, para não pesar)
-                    -- Aqui criamos apenas 2 "arranhões" por faixa, posicionados aleatoriamente
-                    if math.random() < 0.6 then
-                        local scratch = Instance.new("Frame")
-                        scratch.BorderSizePixel = 0
-                        scratch.BackgroundColor3 = SCRIBBLE_COLOR
-                        scratch.BackgroundTransparency = 0.4 -- bem visível no hover (será alterado)
-                        scratch.Position = UDim2.fromOffset(startX + math.random(0, math.max(1, w - 4)), rowOffset + math.random(0, SLICE_STEP - 1))
-                        scratch.Size = UDim2.fromOffset(math.random(2, math.max(3, math.floor(w))), 1)
-                        scratch.ZIndex = HOVER_ZINDEX_BASE + 1
-                        scratch.Parent = wheelFrame
-                        table.insert(sectorHoverGroups[currentSector].scribble, scratch)
-                    end
-                end
+                local frame = Instance.new("Frame")
+                frame.BorderSizePixel = 0
+                frame.BackgroundColor3 = HOVER_COLOR
+                frame.BackgroundTransparency = 1 -- Invisível por padrão
+                frame.Position = UDim2.fromOffset(startX, rowOffset)
+                frame.Size = UDim2.fromOffset((colOffset - startX) + 0.5, SLICE_STEP + 0.5)
+                frame.ZIndex = 2 -- Acima do preto, abaixo do ícone
+                frame.Parent = wheelFrame
+                table.insert(sectorSlices[currentSector], frame)
             end
             currentSector = sector
             startX = colOffset
         end
     end
-
     if currentSector then
-        local w = ((radiusTotal * 2) - startX) + 0.5
-        if w > 0 then
-            if not sectorHoverGroups[currentSector] then
-                sectorHoverGroups[currentSector] = { bg = {}, scribble = {} }
-            end
-
-            local bg = Instance.new("Frame")
-            bg.BorderSizePixel = 0
-            bg.BackgroundColor3 = HOVER_BG_COLOR
-            bg.BackgroundTransparency = 1
-            bg.Position = UDim2.fromOffset(startX, rowOffset)
-            bg.Size = UDim2.fromOffset(w, SLICE_STEP + 0.5)
-            bg.ZIndex = HOVER_ZINDEX_BASE
-            bg.Parent = wheelFrame
-            table.insert(sectorHoverGroups[currentSector].bg, bg)
-
-            if math.random() < 0.6 then
-                local scratch = Instance.new("Frame")
-                scratch.BorderSizePixel = 0
-                scratch.BackgroundColor3 = SCRIBBLE_COLOR
-                scratch.BackgroundTransparency = 0.4
-                scratch.Position = UDim2.fromOffset(startX + math.random(0, math.max(1, w - 4)), rowOffset + math.random(0, SLICE_STEP - 1))
-                scratch.Size = UDim2.fromOffset(math.random(2, math.max(3, math.floor(w))), 1)
-                scratch.ZIndex = HOVER_ZINDEX_BASE + 1
-                scratch.Parent = wheelFrame
-                table.insert(sectorHoverGroups[currentSector].scribble, scratch)
-            end
-        end
+        local frame = Instance.new("Frame")
+        frame.BorderSizePixel = 0
+        frame.BackgroundColor3 = HOVER_COLOR
+        frame.BackgroundTransparency = 1
+        frame.Position = UDim2.fromOffset(startX, rowOffset)
+        frame.Size = UDim2.fromOffset(((radiusTotal * 2) - startX) + 0.5, SLICE_STEP + 0.5)
+        frame.ZIndex = 2
+        frame.Parent = wheelFrame
+        table.insert(sectorSlices[currentSector], frame)
     end
 end
 
---// SLOTS (Ícone Branco sobre o rabisco)
-for i = 1, TOTAL_SLOTS do
-    local slotAngleDeg = ((i - 1) * SLICE_ANGLE) - 90
-    local slotAngleRad = math.rad(slotAngleDeg)
-    local slotX = radiusTotal + (math.cos(slotAngleRad) * slotLabelRadius)
-    local slotY = radiusTotal + (math.sin(slotAngleRad) * slotLabelRadius)
-
-    local slotButton = Instance.new("TextButton")
-    slotButton.Size = UDim2.fromOffset(55, 55)
-    slotButton.AnchorPoint = Vector2.new(0.5, 0.5)
-    slotButton.Position = UDim2.fromOffset(slotX, slotY)
-    slotButton.BackgroundTransparency = 1
-    slotButton.Text = ""
-    slotButton.ZIndex = 6
-    slotButton.Parent = wheelFrame
-
-    local slotImg = Instance.new("ImageLabel")
-    slotImg.Size = UDim2.new(1, -10, 1, -10)
-    slotImg.Position = UDim2.new(0, 5, 0, 5)
-    slotImg.BackgroundTransparency = 1
-    slotImg.ScaleType = Enum.ScaleType.Fit
-    slotImg.ImageColor3 = Color3.fromRGB(255, 255, 255) -- BRANCO PURO (o gradiente/rabisco fica atrás)
-    slotImg.ZIndex = 6
-    slotImg.Parent = slotButton
-
-    local slotText = Instance.new("TextLabel")
-    slotText.Size = UDim2.new(1, 0, 1, 0)
-    slotText.BackgroundTransparency = 1
-    slotText.Text = tostring(i)
-    slotText.TextColor3 = Color3.fromRGB(255, 255, 255)
-    slotText.TextSize = 17
-    slotText.Font = Enum.Font.Arcade
-    slotText.ZIndex = 7
-    slotText.Parent = slotButton
-
-    slotButton.MouseButton1Click:Connect(function()
-        local item = catalogItems[i]
-        if item then
-            selectedEmoteItem = item
-            centerText.Text = item.name or item.Name or "Emote"
-            cartridgeButton.Visible = true
-            LoadTrack(item.id or item.AssetId or item.Id)
-            mainContainer.Visible = false
-        end
-    end)
-
-    slotButtons[i] = slotButton
-    slotImages[i] = slotImg
-    slotTexts[i] = slotText
-end
-
---// HOVER SYSTEM (Setor Inteiro)
 local hoveredIndex = nil
 local selectedIndex = nil
 local lastHovered = nil
@@ -1021,54 +828,17 @@ local lastSelected = nil
 
 local function applySectorVisual(index)
     if not index then return end
-    local group = sectorHoverGroups[index]
-    if not group then return end
-
     local isSelected = (index == selectedIndex)
     local isHovered = (index == hoveredIndex)
 
-    local bgTransparency = 1
-    local scribbleTransparency = 1
-    local scribbleColor = SCRIBBLE_COLOR
+    local targetTransparency = 1
+    if isSelected then targetTransparency = SELECT_TRANSPARENCY
+    elseif isHovered then targetTransparency = HOVER_TRANSPARENCY end
 
-    if isSelected then
-        bgTransparency = 0.3
-        scribbleTransparency = 0.2
-        scribbleColor = Color3.fromRGB(200, 200, 200) -- Rabisco mais claro na seleção
-    elseif isHovered then
-        bgTransparency = 0.5
-        scribbleTransparency = 0.4
-        scribbleColor = SCRIBBLE_COLOR
-    end
-
-    -- Aplica tween no fundo do setor
-    for _, bg in ipairs(group.bg) do
-        TweenService:Create(bg, TweenInfo.new(0.15, Enum.EasingStyle.Quad), {
-            BackgroundTransparency = bgTransparency
+    for _, frame in ipairs(sectorSlices[index] or {}) do
+        TweenService:Create(frame, TweenInfo.new(0.15, Enum.EasingStyle.Quad), {
+            BackgroundTransparency = targetTransparency
         }):Play()
-    end
-
-    -- Aplica tween no rabisco (mantém as linhas visíveis no hover)
-    for _, scr in ipairs(group.scribble) do
-        TweenService:Create(scr, TweenInfo.new(0.15, Enum.EasingStyle.Quad), {
-            BackgroundTransparency = scribbleTransparency,
-            BackgroundColor3 = scribbleColor
-        }):Play()
-    end
-
-    -- Destaque no texto
-    local txt = slotTexts[index]
-    if txt then
-        if isSelected then
-            txt.TextColor3 = Color3.fromRGB(255, 255, 255)
-            txt.TextSize = 19
-        elseif isHovered then
-            txt.TextColor3 = Color3.fromRGB(230, 230, 230)
-            txt.TextSize = 18
-        else
-            txt.TextColor3 = Color3.fromRGB(255, 255, 255)
-            txt.TextSize = 17
-        end
     end
 end
 
@@ -1078,6 +848,7 @@ local function renderRadialState()
     if lastSelected then changed[lastSelected] = true end
     if hoveredIndex then changed[hoveredIndex] = true end
     if selectedIndex then changed[selectedIndex] = true end
+
     for i in pairs(changed) do applySectorVisual(i) end
     lastHovered = hoveredIndex
     lastSelected = selectedIndex
@@ -1091,11 +862,78 @@ local function getSectorFromPosition(position)
     local dx = position.X - center.X
     local dy = position.Y - center.Y
     local dist = math.sqrt(dx * dx + dy * dy)
+
     if dist < innerRadius - 2 or dist > outerRadius + 2 then return nil end
+
     local angleDeg = math.deg(math.atan2(dy, dx))
     return angleToSector(angleDeg)
 end
 
+--// CRIAÇÃO DOS SLOTS (Botões + Ícones)
+for i = 1, TOTAL_SLOTS do
+    local slotAngleDeg = ((i - 1) * SLICE_ANGLE) - 90
+    local slotAngleRad = math.rad(slotAngleDeg)
+    local slotX = radiusTotal + (math.cos(slotAngleRad) * slotLabelRadius)
+    local slotY = radiusTotal + (math.sin(slotAngleRad) * slotLabelRadius)
+
+    local slotButton = Instance.new("TextButton")
+    slotButton.Size = UDim2.fromOffset(60, 60)
+    slotButton.AnchorPoint = Vector2.new(0.5, 0.5)
+    slotButton.Position = UDim2.fromOffset(slotX, slotY)
+    slotButton.BackgroundTransparency = 1
+    slotButton.Text = ""
+    slotButton.ZIndex = 6 -- Ícone acima do gradiente cinza
+    slotButton.Parent = wheelFrame
+
+    -- Imagem do Emote
+    local slotImg = Instance.new("ImageLabel")
+    slotImg.Size = UDim2.new(0.8, 0, 0.8, 0) -- Um pouco menor que o botão
+    slotImg.AnchorPoint = Vector2.new(0.5, 0.5)
+    slotImg.Position = UDim2.new(0.5, 0, 0.5, 0)
+    slotImg.BackgroundTransparency = 1
+    slotImg.ScaleType = Enum.ScaleType.Fit
+    slotImg.ZIndex = 6
+    slotImg.Parent = slotButton
+
+    -- Texto do Número (Apenas se não houver emote)
+    local slotText = Instance.new("TextLabel")
+    slotText.Size = UDim2.new(1, 0, 1, 0)
+    slotText.BackgroundTransparency = 1
+    slotText.Text = tostring(i)
+    slotText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    slotText.TextSize = 18
+    slotText.Font = Enum.Font.Arcade
+    slotText.ZIndex = 6
+    slotText.Parent = slotButton
+
+    -- Eventos
+    slotButton.MouseButton1Click:Connect(function()
+        local item = catalogItems[i]
+        if item then
+            selectedIndex = i
+            renderRadialState()
+            selectedEmoteItem = item
+            centerText.Text = item.name or item.Name or "Emote"
+            cartridgeButton.Visible = true
+            LoadTrack(item.id or item.AssetId or item.Id)
+            mainContainer.Visible = false
+        end
+    end)
+
+    slotButton.MouseEnter:Connect(function()
+        hoveredIndex = i
+        renderRadialState()
+    end)
+    slotButton.MouseLeave:Connect(function()
+        if hoveredIndex == i then hoveredIndex = nil; renderRadialState() end
+    end)
+
+    slotButtons[i] = slotButton
+    slotImages[i] = slotImg
+    slotTexts[i] = slotText
+end
+
+--// HOVER POR SETOR LIVRE
 UserInputService.InputChanged:Connect(function(input)
     if not mainContainer.Visible then return end
     if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
@@ -1107,24 +945,20 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
+--// CLIQUE NO SETOR LIVRE
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if not mainContainer.Visible then return end
-    local isClick = input.UserInputType == Enum.UserInputType.MouseButton1
-    local isTouch = input.UserInputType == Enum.UserInputType.Touch
-    if not (isClick or isTouch) then return end
-
-    local idx = getSectorFromPosition(Vector2.new(input.Position.X, input.Position.Y))
-    if idx and catalogItems[idx] then
-        selectedIndex = idx
-        hoveredIndex = idx
-        renderRadialState()
-        local item = catalogItems[idx]
-        selectedEmoteItem = item
-        centerText.Text = item.name or item.Name or "Emote"
-        cartridgeButton.Visible = true
-        LoadTrack(item.id or item.AssetId or item.Id)
-        mainContainer.Visible = false
+    if gameProcessed or not mainContainer.Visible then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        local idx = getSectorFromPosition(Vector2.new(input.Position.X, input.Position.Y))
+        if idx and catalogItems[idx] then
+            selectedIndex = idx; hoveredIndex = idx; renderRadialState()
+            local item = catalogItems[idx]
+            selectedEmoteItem = item
+            centerText.Text = item.name or item.Name or "Emote"
+            cartridgeButton.Visible = true
+            LoadTrack(item.id or item.AssetId or item.Id)
+            mainContainer.Visible = false
+        end
     end
 end)
 
@@ -1144,7 +978,6 @@ updateWheelSlots = function()
         if item then
             txt.Visible = false
             local eid = item.id or item.AssetId or item.Id
-            -- Usa a thumbnail como ícone do emote (branco por padrão da silhueta)
             img.Image = "rbxthumb://type=Asset&id=" .. tostring(eid) .. "&w=150&h=150"
             img.Visible = true
         else
@@ -1160,7 +993,6 @@ end
 loadPage = function(targetPage)
     searchToken = searchToken + 1
     local myToken = searchToken
-
     local localCount = applySearchLocal(currentKeyword)
 
     if currentCategory ~= "All" then
@@ -1179,8 +1011,7 @@ loadPage = function(targetPage)
             local eid = tostring(e.id or e.AssetId or e.Id)
             if catSet[eid] then table.insert(filtered, e) end
         end
-        filteredEmotes = filtered
-        localCount = #filteredEmotes
+        filteredEmotes = filtered; localCount = #filteredEmotes
     end
 
     totalPages = math.max(1, math.ceil(localCount / 8))
@@ -1193,9 +1024,7 @@ loadPage = function(targetPage)
     catalogItems = {}
     local startIdx = (currentPage - 1) * 8 + 1
     for j = 0, 7 do
-        if filteredEmotes[startIdx + j] then
-            table.insert(catalogItems, filteredEmotes[startIdx + j])
-        end
+        if filteredEmotes[startIdx + j] then table.insert(catalogItems, filteredEmotes[startIdx + j]) end
     end
     updateWheelSlots()
 
@@ -1205,142 +1034,91 @@ loadPage = function(targetPage)
             if myToken ~= searchToken then return end
             if #apiList > 0 then
                 local merged = mergeNoDupes(filteredEmotes, apiList)
-                filteredEmotes = merged
-                totalPages = math.max(1, math.ceil(#merged / 8))
-
+                filteredEmotes = merged; totalPages = math.max(1, math.ceil(#merged / 8))
                 local added = false
                 for _, novo in ipairs(apiList) do
-                    if not emoteIndexById[tostring(novo.id)] then
-                        table.insert(allEmotes, novo)
-                        emoteIndexById[tostring(novo.id)] = novo
-                        added = true
-                    end
+                    if not emoteIndexById[tostring(novo.id)] then table.insert(allEmotes, novo); emoteIndexById[tostring(novo.id)] = novo; added = true end
                 end
                 if added then SaveEmoteCache() end
-
                 if targetPage > totalPages then targetPage = totalPages end
                 currentPage = targetPage
                 pageTextBox.Text = tostring(currentPage)
                 pageInfoLabel.Text = tostring(totalPages)
-
                 catalogItems = {}
                 local newStart = (currentPage - 1) * 8 + 1
-                for j = 0, 7 do
-                    if filteredEmotes[newStart + j] then
-                        table.insert(catalogItems, filteredEmotes[newStart + j])
-                    end
-                end
+                for j = 0, 7 do if filteredEmotes[newStart + j] then table.insert(catalogItems, filteredEmotes[newStart + j]) end end
                 updateWheelSlots()
             end
         end)
     end
 end
 
-prevButton.MouseButton1Click:Connect(function()
-    if currentPage > 1 then loadPage(currentPage - 1) end
-end)
-nextButton.MouseButton1Click:Connect(function()
-    if currentPage < totalPages then loadPage(currentPage + 1) end
-end)
+prevButton.MouseButton1Click:Connect(function() if currentPage > 1 then loadPage(currentPage - 1) end end)
+nextButton.MouseButton1Click:Connect(function() if currentPage < totalPages then loadPage(currentPage + 1) end end)
 pageTextBox.FocusLost:Connect(function()
     local num = tonumber(pageTextBox.Text)
-    if num then loadPage(math.clamp(num, 1, totalPages))
-    else pageTextBox.Text = tostring(currentPage) end
+    if num then loadPage(math.clamp(num, 1, totalPages)) else pageTextBox.Text = tostring(currentPage) end
 end)
 searchBox.FocusLost:Connect(function()
-    currentKeyword = searchBox.Text
-    currentPage = 1
-    loadPage(1)
+    currentKeyword = searchBox.Text; currentPage = 1; loadPage(1)
 end)
 
 --// BUILD CATEGORIES MENU
 buildCategoriesMenu = function()
-    for _, child in ipairs(sideScrolling:GetChildren()) do
-        if child:IsA("TextButton") then child:Destroy() end
-    end
+    for _, child in ipairs(sideScrolling:GetChildren()) do if child:IsA("TextButton") then child:Destroy() end end
 
     local function createCatBtn(name, count, isAll)
         local btn = Instance.new("TextButton")
         btn.Size = UDim2.new(1, 0, 0, 34)
         btn.BackgroundColor3 = (currentCategory == name) and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(0, 0, 0)
-        btn.AutoButtonColor = false
-        btn.Text = ""
-        btn.Parent = sideScrolling
+        btn.AutoButtonColor = false; btn.Text = ""; btn.Parent = sideScrolling
         btn:SetAttribute("CategoryName", name)
         Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 7)
-
         local stroke = Instance.new("UIStroke", btn)
         stroke.Thickness = (currentCategory == name) and 2 or 1
         stroke.Color = (currentCategory == name) and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(100, 100, 100)
         stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
         local icon = Instance.new("ImageLabel")
-        icon.Size = UDim2.fromOffset(17, 17)
-        icon.Position = UDim2.new(0, 10, 0.5, -8)
-        icon.BackgroundTransparency = 1
-        icon.Image = ID_ICONE_SOL
+        icon.Size = UDim2.fromOffset(17, 17); icon.Position = UDim2.new(0, 10, 0.5, -8)
+        icon.BackgroundTransparency = 1; icon.Image = ID_ICONE_SOL
         icon.ImageColor3 = (currentCategory == name) and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
         icon.Parent = btn
 
         local label = Instance.new("TextLabel")
-        label.Name = "CatTitle"
-        label.Size = UDim2.new(1, -54, 0, 17)
-        label.Position = UDim2.new(0, 34, 0, 2)
-        label.BackgroundTransparency = 1
-        label.Text = name
-        label.TextColor3 = Color3.fromRGB(255, 255, 255)
-        label.TextSize = 12
-        label.Font = Enum.Font.Arcade
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.Parent = btn
+        label.Name = "CatTitle"; label.Size = UDim2.new(1, -54, 0, 17); label.Position = UDim2.new(0, 34, 0, 2)
+        label.BackgroundTransparency = 1; label.Text = name; label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.TextSize = 12; label.Font = Enum.Font.Arcade; label.TextXAlignment = Enum.TextXAlignment.Left; label.Parent = btn
 
         local subtitle = Instance.new("TextLabel")
-        subtitle.Size = UDim2.new(1, -54, 0, 12)
-        subtitle.Position = UDim2.new(0, 34, 0, 18)
-        subtitle.BackgroundTransparency = 1
-        subtitle.Text = isAll and "Todos os Emotes" or ("(" .. tostring(count) .. ")")
-        subtitle.TextColor3 = Color3.fromRGB(150, 150, 150)
-        subtitle.TextSize = 10
-        subtitle.Font = Enum.Font.Arcade
-        subtitle.TextXAlignment = Enum.TextXAlignment.Left
-        subtitle.Parent = btn
+        subtitle.Size = UDim2.new(1, -54, 0, 12); subtitle.Position = UDim2.new(0, 34, 0, 18)
+        subtitle.BackgroundTransparency = 1; subtitle.Text = isAll and "Todos os Emotes" or ("(" .. tostring(count) .. ")")
+        subtitle.TextColor3 = Color3.fromRGB(150, 150, 150); subtitle.TextSize = 10; subtitle.Font = Enum.Font.Arcade
+        subtitle.TextXAlignment = Enum.TextXAlignment.Left; subtitle.Parent = btn
 
         if not isAll then
             local pencil = Instance.new("ImageButton")
-            pencil.Size = UDim2.fromOffset(17, 17)
-            pencil.Position = UDim2.new(1, -46, 0.5, -8)
-            pencil.BackgroundTransparency = 1
-            pencil.Image = ID_LAPIS
-            pencil.Parent = btn
+            pencil.Size = UDim2.fromOffset(17, 17); pencil.Position = UDim2.new(1, -46, 0.5, -8)
+            pencil.BackgroundTransparency = 1; pencil.Image = ID_LAPIS; pencil.Parent = btn
             pencil.MouseButton1Click:Connect(function() promptRenameCategory(name) end)
         end
 
         local arrow = Instance.new("TextLabel")
-        arrow.Size = UDim2.new(0, 14, 1, 0)
-        arrow.Position = UDim2.new(1, -22, 0, 0)
-        arrow.BackgroundTransparency = 1
-        arrow.Text = ">"
-        arrow.TextColor3 = Color3.fromRGB(255, 255, 255)
-        arrow.TextSize = 13
-        arrow.Font = Enum.Font.Arcade
-        arrow.Parent = btn
+        arrow.Size = UDim2.new(0, 14, 1, 0); arrow.Position = UDim2.new(1, -22, 0, 0)
+        arrow.BackgroundTransparency = 1; arrow.Text = ">"; arrow.TextColor3 = Color3.fromRGB(255, 255, 255)
+        arrow.TextSize = 13; arrow.Font = Enum.Font.Arcade; arrow.Parent = btn
 
         btn.MouseButton1Click:Connect(function()
             if currentCategory == name and not isAll then return end
-            currentCategory = name
-            currentPage = 1
-            loadPage(currentPage)
-            buildCategoriesMenu()
+            currentCategory = name; currentPage = 1; loadPage(currentPage); buildCategoriesMenu()
         end)
     end
 
     createCatBtn("All", #allEmotes, true)
-    for _, cat in ipairs(emoteData.categories) do
-        createCatBtn(cat.name, #cat.emotes, false)
-    end
+    for _, cat in ipairs(emoteData.categories) do createCatBtn(cat.name, #cat.emotes, false) end
 end
 
---// TOGGLE (RightShift)
+--// TOGGLE
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode == Enum.KeyCode.RightShift then
@@ -1354,4 +1132,4 @@ buildCategoriesMenu()
 loadPage(1)
 renderRadialState()
 
-print("✅ [7yd7] Radial Menu visual carregado (rabisco cinza + ícone branco).")
+print("✅ [7yd7] Visual exato aplicado!")
