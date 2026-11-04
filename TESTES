@@ -1,12 +1,9 @@
 --[[
-    Script: 7yd7 | Roda Radial de Emotes
-    - DESIGN ORIGINAL do 7yd7 preservado 100%
-    - SISTEMA RADIAL MENU aplicado por baixo:
-      * detecção de setor por ângulo + distância (inner/outer)
-      * hover por setor inteiro (não só o botão)
-      * clique em qualquer ponto do setor seleciona o emote
-      * seleção persistente por setor (highlight no anel)
-    - Busca híbrida (JSON + API), categorias, paginação, save, animação
+    Script: 7yd7 | Roda Radial de Emotes (Visual da Imagem)
+    - O setor inteiro fica cinza escuro com um efeito de "rabisco"
+    - O ícone do emote fica BRANCO PURO por cima do rabisco
+    - Divisores brancos finos
+    - Círculo central preto com texto branco
 ]]
 
 --// SERVICES
@@ -47,16 +44,14 @@ local ID_SETA_DIREITA = "rbxassetid://138794689086376"
 
 local MARGIN = 14
 
---// PERSISTÊNCIA
+--// PERSISTÊNCIA / BANCO DE EMOTES (mesma lógica original)
 local FOLDER = "7yd7"
 local EMOTE_CACHE_FILE = FOLDER .. "/EmoteListCache.json"
 local GITHUB_URL = "https://raw.githubusercontent.com/7yd7/sniper-Emote/refs/heads/test/EmoteSniper.json"
 local DEFAULT_TOTAL_PAGES = 7415
 
 local function ensureFolder()
-    if isfolder and not isfolder(FOLDER) then
-        pcall(function() makefolder(FOLDER) end)
-    end
+    if isfolder and not isfolder(FOLDER) then pcall(function() makefolder(FOLDER) end) end
 end
 
 local allEmotes, filteredEmotes, emoteIndexById = {}, {}, {}
@@ -64,9 +59,7 @@ local allEmotes, filteredEmotes, emoteIndexById = {}, {}, {}
 local function LoadEmoteCache()
     ensureFolder()
     if isfile and isfile(EMOTE_CACHE_FILE) then
-        local ok, decoded = pcall(function()
-            return HttpService:JSONDecode(readfile(EMOTE_CACHE_FILE))
-        end)
+        local ok, decoded = pcall(function() return HttpService:JSONDecode(readfile(EMOTE_CACHE_FILE)) end)
         if ok and type(decoded) == "table" and #decoded > 0 then return decoded end
     end
     return nil
@@ -74,11 +67,7 @@ end
 
 local function SaveEmoteCache()
     ensureFolder()
-    if writefile then
-        pcall(function()
-            writefile(EMOTE_CACHE_FILE, HttpService:JSONEncode(allEmotes))
-        end)
-    end
+    if writefile then pcall(function() writefile(EMOTE_CACHE_FILE, HttpService:JSONEncode(allEmotes)) end) end
 end
 
 local function FetchFromGitHub()
@@ -91,9 +80,7 @@ local function FetchFromGitHub()
         local out = {}
         for _, item in ipairs(result.data) do
             local id = tonumber(item.id)
-            if id and id > 0 then
-                table.insert(out, {id = id, name = item.name or ("Emote_" .. id)})
-            end
+            if id and id > 0 then table.insert(out, {id = id, name = item.name or ("Emote_" .. id)}) end
         end
         if #out > 0 then return out end
     end
@@ -144,8 +131,7 @@ local function applySearchLocal(term)
     if isId then
         local item = emoteIndexById[term]
         if item then filteredEmotes = {item}; return 1 end
-        filteredEmotes = {}
-        return 0
+        filteredEmotes = {}; return 0
     end
     local out = {}
     for _, e in ipairs(allEmotes) do
@@ -169,9 +155,7 @@ local function mergeNoDupes(listA, listB)
 end
 
 local function getEmoteName(id)
-    local ok, info = pcall(function()
-        return MarketplaceService:GetProductInfo(tonumber(id))
-    end)
+    local ok, info = pcall(function() return MarketplaceService:GetProductInfo(tonumber(id)) end)
     if ok and info and info.Name then return info.Name end
     return "Emote_" .. tostring(id)
 end
@@ -179,7 +163,6 @@ end
 --// CARREGAMENTO
 print("[7yd7] Carregando emotes...")
 local loaded = false
-
 local cached = LoadEmoteCache()
 if cached then allEmotes = cached; RebuildIndex(); loaded = true; print("[7yd7] ✅ Cache:", #allEmotes) end
 if not loaded then
@@ -191,12 +174,7 @@ if not loaded then
     if a and #a > 0 then allEmotes = a; RebuildIndex(); SaveEmoteCache(); loaded = true; print("[7yd7] ✅ API:", #allEmotes) end
 end
 if not loaded then
-    allEmotes = {
-        {id = 3360686498, name = "Stadium"},
-        {id = 3360692915, name = "Tilt"},
-        {id = 3576968026, name = "Shrug"},
-        {id = 3360689775, name = "Salute"},
-    }
+    allEmotes = { {id = 3360686498, name = "Stadium"}, {id = 3360692915, name = "Tilt"}, {id = 3576968026, name = "Shrug"}, {id = 3360689775, name = "Salute"} }
     RebuildIndex()
     print("[7yd7] ⚠️ Fallback:", #allEmotes)
 end
@@ -211,7 +189,7 @@ local totalPages = DEFAULT_TOTAL_PAGES
 local currentKeyword = ""
 local selectedEmoteItem = nil
 local catalogItems = {}
-local slotButtons, slotImages, slotHighlights, slotTexts = {}, {}, {}, {}
+local slotButtons, slotImages, slotTexts = {}, {}, {}
 local searchToken = 0
 
 local updateWheelSlots, loadPage, buildCategoriesMenu, openSaveModal
@@ -219,13 +197,9 @@ local updateWheelSlots, loadPage, buildCategoriesMenu, openSaveModal
 --// TRACK
 local function LoadTrack(id)
     if CurrentTrack then CurrentTrack:Stop(0.1) end
-    local animId
+    local animId = "rbxassetid://" .. tostring(id)
     local ok, result = pcall(function() return game:GetObjects("rbxassetid://" .. tostring(id)) end)
-    if ok and result and #result > 0 and result[1]:IsA("Animation") then
-        animId = result[1].AnimationId
-    else
-        animId = "rbxassetid://" .. tostring(id)
-    end
+    if ok and result and #result > 0 and result[1]:IsA("Animation") then animId = result[1].AnimationId end
     local newAnim = Instance.new("Animation")
     newAnim.AnimationId = animId
     local newTrack = humanoid:LoadAnimation(newAnim)
@@ -280,9 +254,7 @@ local dragging, dragInput, dragStart, startPos
 toggleButton.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true; dragStart = input.Position; startPos = toggleButton.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then dragging = false end
-        end)
+        input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end)
     end
 end)
 toggleButton.InputChanged:Connect(function(input)
@@ -301,11 +273,9 @@ mainContainer.BackgroundTransparency = 1
 mainContainer.Visible = true
 mainContainer.Parent = screenGui
 
-toggleButton.MouseButton1Click:Connect(function()
-    mainContainer.Visible = not mainContainer.Visible
-end)
+toggleButton.MouseButton1Click:Connect(function() mainContainer.Visible = not mainContainer.Visible end)
 
---// RODA RADIAL (WHEEL_SIZE original 276)
+--// GEOMETRIA RADIAL BASE
 local WHEEL_SIZE = 276
 local wheelFrame = Instance.new("Frame")
 wheelFrame.Size = UDim2.fromOffset(WHEEL_SIZE, WHEEL_SIZE)
@@ -363,7 +333,6 @@ cartridgeButton.BackgroundTransparency = 1
 cartridgeButton.Image = ID_CARTUCHO_SEMBORDA
 cartridgeButton.Visible = false
 cartridgeButton.Parent = topBar
-
 cartridgeButton.MouseButton1Click:Connect(function() if selectedEmoteItem then openSaveModal() end end)
 
 --// BARRA INFERIOR
@@ -548,17 +517,12 @@ end
 local createCatGlobalBtn = createFooterButton("Criar Categoria", ID_SIMBOLO_MAIS, 1, ">")
 local removeCatGlobalBtn = createFooterButton("Remover Categoria", ID_SIMBOLO_LIXEIRA, 2)
 
-docButton.MouseButton1Click:Connect(function()
-    sidePanel.Visible = not sidePanel.Visible
-end)
+docButton.MouseButton1Click:Connect(function() sidePanel.Visible = not sidePanel.Visible end)
 
 local function promptRenameCategory(oldName)
     local targetBtn = nil
     for _, child in ipairs(sideScrolling:GetChildren()) do
-        if child:IsA("TextButton") and child:GetAttribute("CategoryName") == oldName then
-            targetBtn = child
-            break
-        end
+        if child:IsA("TextButton") and child:GetAttribute("CategoryName") == oldName then targetBtn = child break end
     end
     if not targetBtn then return end
     local titleLabel = targetBtn:FindFirstChild("CatTitle")
@@ -603,11 +567,7 @@ end)
 removeCatGlobalBtn.MouseButton1Click:Connect(function()
     if currentCategory == "All" then return end
     for i, cat in ipairs(emoteData.categories) do
-        if cat.name == currentCategory then
-            table.remove(emoteData.categories, i)
-            currentCategory = "All"
-            break
-        end
+        if cat.name == currentCategory then table.remove(emoteData.categories, i); currentCategory = "All"; break end
     end
     buildCategoriesMenu()
     loadPage(1)
@@ -710,9 +670,7 @@ mPadding.Parent = modalScrolling
 local targetCategoryToSave = nil
 
 openSaveModal = function()
-    for _, child in ipairs(modalScrolling:GetChildren()) do
-        if child:IsA("TextButton") then child:Destroy() end
-    end
+    for _, child in ipairs(modalScrolling:GetChildren()) do if child:IsA("TextButton") then child:Destroy() end end
     targetCategoryToSave = nil
 
     for i, cat in ipairs(emoteData.categories) do
@@ -823,9 +781,7 @@ saveConfirmBtn.MouseButton1Click:Connect(function()
                     local eid = type(entry) == "table" and tostring(entry.id or entry) or tostring(entry)
                     if eid == id then exists = true; break end
                 end
-                if not exists then
-                    table.insert(cat.emotes, {id = tonumber(id) or id, name = name})
-                end
+                if not exists then table.insert(cat.emotes, {id = tonumber(id) or id, name = name}) end
                 break
             end
         end
@@ -836,8 +792,16 @@ saveConfirmBtn.MouseButton1Click:Connect(function()
 end)
 
 --// =====================================================================
---// ELEMENTOS VISUAIS DA RODA (DESIGN ORIGINAL) + SISTEMA RADIAL MENU
+--// ELEMENTOS VISUAIS DA RODA (CONFORME A IMAGEM)
 --// =====================================================================
+local radiusTotal = WHEEL_SIZE / 2
+local CENTER_RATIO = 0.42
+local innerRadius = radiusTotal * CENTER_RATIO
+local outerRadius = radiusTotal
+local slotLabelRadius = (innerRadius + outerRadius) / 2
+local TOTAL_SLOTS = 8
+local SLICE_ANGLE = 360 / TOTAL_SLOTS
+
 local outerCircle = Instance.new("Frame")
 outerCircle.Size = UDim2.new(1, 0, 1, 0)
 outerCircle.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
@@ -847,7 +811,6 @@ local outerStroke = Instance.new("UIStroke", outerCircle)
 outerStroke.Color = Color3.fromRGB(255, 255, 255)
 outerStroke.Thickness = 3
 
-local CENTER_RATIO = 0.42
 local centerCircle = Instance.new("Frame")
 centerCircle.Size = UDim2.new(CENTER_RATIO, 0, CENTER_RATIO, 0)
 centerCircle.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -872,24 +835,14 @@ centerText.Font = Enum.Font.Arcade
 centerText.ZIndex = 5
 centerText.Parent = centerCircle
 
---// GEOMETRIA RADIAL (mesma lógica do Radial Menu)
-local radiusTotal = WHEEL_SIZE / 2
-local innerRadius = radiusTotal * CENTER_RATIO
-local outerRadius = radiusTotal
-local slotLabelRadius = (innerRadius + outerRadius) / 2
-local TOTAL_SLOTS = 8
-local SLICE_ANGLE = 360 / TOTAL_SLOTS
-
---// DIVISORES (design original preservado)
+--// DIVISORES
 for i = 1, TOTAL_SLOTS do
     local dividerAngleDeg = -90 + ((i - 1) * SLICE_ANGLE) - (SLICE_ANGLE / 2)
     local dividerAngleRad = math.rad(dividerAngleDeg)
-
     local x1 = radiusTotal + math.cos(dividerAngleRad) * innerRadius
     local y1 = radiusTotal + math.sin(dividerAngleRad) * innerRadius
     local x2 = radiusTotal + math.cos(dividerAngleRad) * outerRadius
     local y2 = radiusTotal + math.sin(dividerAngleRad) * outerRadius
-
     local dx, dy = x2 - x1, y2 - y1
     local lineLength = math.sqrt(dx * dx + dy * dy)
     local lineAngle = math.deg(math.atan2(dy, dx))
@@ -905,38 +858,26 @@ for i = 1, TOTAL_SLOTS do
     line.Parent = wheelFrame
 end
 
---// =====================================================================
---// SISTEMA RADIAL: HIGHLIGHT POR SETOR INTEIRO
---// Para cada setor, criamos um FRAME em formato de "fatia" (usando vários
---// pedaços horizontais) que fica ESCONDIDO por padrão e aparece no hover/seleção.
---// Isso NÃO altera o design (fundo preto, divisores brancos) — apenas adiciona
---// a resposta visual do Radial Menu por cima do anel, respeitando o estilo.
---// =====================================================================
+--// SISTEMA DE HIGHLIGHT COM RABISCO (SCRIBBLE)
+-- O rabisco é gerado por várias linhas curvadas no espaço do setor, com uma
+-- cor cinza forte e semi-transparente, posicionadas ABAIXO do ícone (ZIndex menor).
 
--- Cor de hover/seleção no estilo do design original (branco translúcido)
-local HOVER_COLOR = Color3.fromRGB(255, 255, 255)
-local HOVER_TRANSPARENCY = 0.85   -- bem sutil no hover
-local SELECT_COLOR = Color3.fromRGB(255, 255, 255)
-local SELECT_TRANSPARENCY = 0.72  -- um pouco mais visível quando selecionado
+local HOVER_ZINDEX_BASE = 4         -- fica acima do fundo preto mas abaixo dos ícones (ZIndex 6/7)
+local SCRIBBLE_COLOR = Color3.fromRGB(140, 140, 140)  -- Cinza forte
+local HOVER_BG_COLOR = Color3.fromRGB(90, 90, 90)     -- Fundo do setor no hover
 
--- Array de slices por setor: sectorSlices[i] = { Frame, Frame, ... }
-local sectorSlices = {}
-for i = 1, TOTAL_SLOTS do sectorSlices[i] = {} end
+local sectorHoverGroups = {}  -- { [i] = {bg, scribbleParts...} }
 
--- Para cada setor, monta a fatia em faixas horizontais de 1px
--- (mesma técnica do pixel-run do Radial Menu, mas usando branco translúcido
---  e ZIndex logo acima do círculo preto para não ferir o design)
 local function angleToSector(angleDeg)
     local corrected = (angleDeg + 90 + (SLICE_ANGLE / 2)) % 360
     return math.floor(corrected / SLICE_ANGLE) + 1
 end
 
+-- Constrói a fatia (mesma técnica pixel-run), mas agora com FUNDO + RABISCO
 local SLICE_STEP = 2
-
 for rowOffset = 0, (radiusTotal * 2) - 1, SLICE_STEP do
     local yPix = rowOffset - radiusTotal
 
-    -- varre horizontalmente para achar trechos contínuos do mesmo setor
     local currentSector = nil
     local startX = nil
 
@@ -952,15 +893,37 @@ for rowOffset = 0, (radiusTotal * 2) - 1, SLICE_STEP do
 
         if sector ~= currentSector then
             if currentSector then
-                local frame = Instance.new("Frame")
-                frame.BorderSizePixel = 0
-                frame.BackgroundColor3 = HOVER_COLOR
-                frame.BackgroundTransparency = 1  -- invisível por padrão
-                frame.Position = UDim2.fromOffset(startX, rowOffset)
-                frame.Size = UDim2.fromOffset((colOffset - startX) + 0.5, SLICE_STEP + 0.5)
-                frame.ZIndex = 2  -- acima do círculo preto (que tem ZIndex padrão 1)
-                frame.Parent = wheelFrame
-                table.insert(sectorSlices[currentSector], frame)
+                local w = (colOffset - startX) + 0.5
+                if w > 0 then
+                    if not sectorHoverGroups[currentSector] then
+                        sectorHoverGroups[currentSector] = { bg = {}, scribble = {} }
+                    end
+
+                    -- Fundo base do setor
+                    local bg = Instance.new("Frame")
+                    bg.BorderSizePixel = 0
+                    bg.BackgroundColor3 = HOVER_BG_COLOR
+                    bg.BackgroundTransparency = 1
+                    bg.Position = UDim2.fromOffset(startX, rowOffset)
+                    bg.Size = UDim2.fromOffset(w, SLICE_STEP + 0.5)
+                    bg.ZIndex = HOVER_ZINDEX_BASE
+                    bg.Parent = wheelFrame
+                    table.insert(sectorHoverGroups[currentSector].bg, bg)
+
+                    -- Rabisco (apenas algumas linhas aleatórias por fatia, para não pesar)
+                    -- Aqui criamos apenas 2 "arranhões" por faixa, posicionados aleatoriamente
+                    if math.random() < 0.6 then
+                        local scratch = Instance.new("Frame")
+                        scratch.BorderSizePixel = 0
+                        scratch.BackgroundColor3 = SCRIBBLE_COLOR
+                        scratch.BackgroundTransparency = 0.4 -- bem visível no hover (será alterado)
+                        scratch.Position = UDim2.fromOffset(startX + math.random(0, math.max(1, w - 4)), rowOffset + math.random(0, SLICE_STEP - 1))
+                        scratch.Size = UDim2.fromOffset(math.random(2, math.max(3, math.floor(w))), 1)
+                        scratch.ZIndex = HOVER_ZINDEX_BASE + 1
+                        scratch.Parent = wheelFrame
+                        table.insert(sectorHoverGroups[currentSector].scribble, scratch)
+                    end
+                end
             end
             currentSector = sector
             startX = colOffset
@@ -968,50 +931,132 @@ for rowOffset = 0, (radiusTotal * 2) - 1, SLICE_STEP do
     end
 
     if currentSector then
-        local frame = Instance.new("Frame")
-        frame.BorderSizePixel = 0
-        frame.BackgroundColor3 = HOVER_COLOR
-        frame.BackgroundTransparency = 1
-        frame.Position = UDim2.fromOffset(startX, rowOffset)
-        frame.Size = UDim2.fromOffset(((radiusTotal * 2) - startX) + 0.5, SLICE_STEP + 0.5)
-        frame.ZIndex = 2
-        frame.Parent = wheelFrame
-        table.insert(sectorSlices[currentSector], frame)
+        local w = ((radiusTotal * 2) - startX) + 0.5
+        if w > 0 then
+            if not sectorHoverGroups[currentSector] then
+                sectorHoverGroups[currentSector] = { bg = {}, scribble = {} }
+            end
+
+            local bg = Instance.new("Frame")
+            bg.BorderSizePixel = 0
+            bg.BackgroundColor3 = HOVER_BG_COLOR
+            bg.BackgroundTransparency = 1
+            bg.Position = UDim2.fromOffset(startX, rowOffset)
+            bg.Size = UDim2.fromOffset(w, SLICE_STEP + 0.5)
+            bg.ZIndex = HOVER_ZINDEX_BASE
+            bg.Parent = wheelFrame
+            table.insert(sectorHoverGroups[currentSector].bg, bg)
+
+            if math.random() < 0.6 then
+                local scratch = Instance.new("Frame")
+                scratch.BorderSizePixel = 0
+                scratch.BackgroundColor3 = SCRIBBLE_COLOR
+                scratch.BackgroundTransparency = 0.4
+                scratch.Position = UDim2.fromOffset(startX + math.random(0, math.max(1, w - 4)), rowOffset + math.random(0, SLICE_STEP - 1))
+                scratch.Size = UDim2.fromOffset(math.random(2, math.max(3, math.floor(w))), 1)
+                scratch.ZIndex = HOVER_ZINDEX_BASE + 1
+                scratch.Parent = wheelFrame
+                table.insert(sectorHoverGroups[currentSector].scribble, scratch)
+            end
+        end
     end
 end
 
--- Estado radial
+--// SLOTS (Ícone Branco sobre o rabisco)
+for i = 1, TOTAL_SLOTS do
+    local slotAngleDeg = ((i - 1) * SLICE_ANGLE) - 90
+    local slotAngleRad = math.rad(slotAngleDeg)
+    local slotX = radiusTotal + (math.cos(slotAngleRad) * slotLabelRadius)
+    local slotY = radiusTotal + (math.sin(slotAngleRad) * slotLabelRadius)
+
+    local slotButton = Instance.new("TextButton")
+    slotButton.Size = UDim2.fromOffset(55, 55)
+    slotButton.AnchorPoint = Vector2.new(0.5, 0.5)
+    slotButton.Position = UDim2.fromOffset(slotX, slotY)
+    slotButton.BackgroundTransparency = 1
+    slotButton.Text = ""
+    slotButton.ZIndex = 6
+    slotButton.Parent = wheelFrame
+
+    local slotImg = Instance.new("ImageLabel")
+    slotImg.Size = UDim2.new(1, -10, 1, -10)
+    slotImg.Position = UDim2.new(0, 5, 0, 5)
+    slotImg.BackgroundTransparency = 1
+    slotImg.ScaleType = Enum.ScaleType.Fit
+    slotImg.ImageColor3 = Color3.fromRGB(255, 255, 255) -- BRANCO PURO (o gradiente/rabisco fica atrás)
+    slotImg.ZIndex = 6
+    slotImg.Parent = slotButton
+
+    local slotText = Instance.new("TextLabel")
+    slotText.Size = UDim2.new(1, 0, 1, 0)
+    slotText.BackgroundTransparency = 1
+    slotText.Text = tostring(i)
+    slotText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    slotText.TextSize = 17
+    slotText.Font = Enum.Font.Arcade
+    slotText.ZIndex = 7
+    slotText.Parent = slotButton
+
+    slotButton.MouseButton1Click:Connect(function()
+        local item = catalogItems[i]
+        if item then
+            selectedEmoteItem = item
+            centerText.Text = item.name or item.Name or "Emote"
+            cartridgeButton.Visible = true
+            LoadTrack(item.id or item.AssetId or item.Id)
+            mainContainer.Visible = false
+        end
+    end)
+
+    slotButtons[i] = slotButton
+    slotImages[i] = slotImg
+    slotTexts[i] = slotText
+end
+
+--// HOVER SYSTEM (Setor Inteiro)
 local hoveredIndex = nil
 local selectedIndex = nil
 local lastHovered = nil
 local lastSelected = nil
 
--- Aplica estilo visual a um setor (fatia + texto/thumb do slot)
 local function applySectorVisual(index)
     if not index then return end
+    local group = sectorHoverGroups[index]
+    if not group then return end
+
     local isSelected = (index == selectedIndex)
     local isHovered = (index == hoveredIndex)
 
-    local color = HOVER_COLOR
-    local transparency = 1
+    local bgTransparency = 1
+    local scribbleTransparency = 1
+    local scribbleColor = SCRIBBLE_COLOR
 
     if isSelected then
-        color = SELECT_COLOR
-        transparency = SELECT_TRANSPARENCY
+        bgTransparency = 0.3
+        scribbleTransparency = 0.2
+        scribbleColor = Color3.fromRGB(200, 200, 200) -- Rabisco mais claro na seleção
     elseif isHovered then
-        color = HOVER_COLOR
-        transparency = HOVER_TRANSPARENCY
+        bgTransparency = 0.5
+        scribbleTransparency = 0.4
+        scribbleColor = SCRIBBLE_COLOR
     end
 
-    for _, frame in ipairs(sectorSlices[index] or {}) do
-        frame.BackgroundColor3 = color
-        -- tween suave para o efeito radial
-        TweenService:Create(frame, TweenInfo.new(0.12, Enum.EasingStyle.Quad), {
-            BackgroundTransparency = transparency
+    -- Aplica tween no fundo do setor
+    for _, bg in ipairs(group.bg) do
+        TweenService:Create(bg, TweenInfo.new(0.15, Enum.EasingStyle.Quad), {
+            BackgroundTransparency = bgTransparency
         }):Play()
     end
 
-    -- Escala/brilho do texto do slot
+    -- Aplica tween no rabisco (mantém as linhas visíveis no hover)
+    for _, scr in ipairs(group.scribble) do
+        TweenService:Create(scr, TweenInfo.new(0.15, Enum.EasingStyle.Quad), {
+            BackgroundTransparency = scribbleTransparency,
+            BackgroundColor3 = scribbleColor
+        }):Play()
+    end
+
+    -- Destaque no texto
     local txt = slotTexts[index]
     if txt then
         if isSelected then
@@ -1033,14 +1078,11 @@ local function renderRadialState()
     if lastSelected then changed[lastSelected] = true end
     if hoveredIndex then changed[hoveredIndex] = true end
     if selectedIndex then changed[selectedIndex] = true end
-    for i in pairs(changed) do
-        applySectorVisual(i)
-    end
+    for i in pairs(changed) do applySectorVisual(i) end
     lastHovered = hoveredIndex
     lastSelected = selectedIndex
 end
 
--- Detecta o setor a partir da posição (mesma fórmula do Radial Menu)
 local function getSectorFromPosition(position)
     if not wheelFrame or not wheelFrame.Visible then return nil end
     local abs = wheelFrame.AbsolutePosition
@@ -1049,98 +1091,14 @@ local function getSectorFromPosition(position)
     local dx = position.X - center.X
     local dy = position.Y - center.Y
     local dist = math.sqrt(dx * dx + dy * dy)
-
-    -- Tolerância: mantém a área de detecção alinhada com o anel visível
     if dist < innerRadius - 2 or dist > outerRadius + 2 then return nil end
-
     local angleDeg = math.deg(math.atan2(dy, dx))
     return angleToSector(angleDeg)
 end
 
---// SLOTS (55x55 - design original preservado)
-for i = 1, TOTAL_SLOTS do
-    local slotAngleDeg = ((i - 1) * SLICE_ANGLE) - 90
-    local slotAngleRad = math.rad(slotAngleDeg)
-    local slotX = radiusTotal + (math.cos(slotAngleRad) * slotLabelRadius)
-    local slotY = radiusTotal + (math.sin(slotAngleRad) * slotLabelRadius)
-
-    local slotButton = Instance.new("TextButton")
-    slotButton.Size = UDim2.fromOffset(55, 55)
-    slotButton.AnchorPoint = Vector2.new(0.5, 0.5)
-    slotButton.Position = UDim2.fromOffset(slotX, slotY)
-    slotButton.BackgroundTransparency = 1
-    slotButton.Text = ""
-    slotButton.ZIndex = 6
-    slotButton.Parent = wheelFrame
-
-    local highlightBg = Instance.new("Frame")
-    highlightBg.Size = UDim2.new(1, 5, 1, 5)
-    highlightBg.AnchorPoint = Vector2.new(0.5, 0.5)
-    highlightBg.Position = UDim2.new(0.5, 0, 0.5, 0)
-    highlightBg.BackgroundColor3 = Color3.fromRGB(120, 120, 120)
-    highlightBg.BackgroundTransparency = 1
-    highlightBg.ZIndex = 5
-    highlightBg.Parent = slotButton
-    Instance.new("UICorner", highlightBg).CornerRadius = UDim.new(1, 0)
-
-    local slotImg = Instance.new("ImageLabel")
-    slotImg.Size = UDim2.new(1, -10, 1, -10)
-    slotImg.Position = UDim2.new(0, 5, 0, 5)
-    slotImg.BackgroundTransparency = 1
-    slotImg.ScaleType = Enum.ScaleType.Fit
-    slotImg.ZIndex = 6
-    slotImg.Parent = slotButton
-
-    local slotText = Instance.new("TextLabel")
-    slotText.Size = UDim2.new(1, 0, 1, 0)
-    slotText.BackgroundTransparency = 1
-    slotText.Text = tostring(i)
-    slotText.TextColor3 = Color3.fromRGB(255, 255, 255)
-    slotText.TextSize = 17
-    slotText.Font = Enum.Font.Arcade
-    slotText.ZIndex = 7
-    slotText.Parent = slotButton
-
-    -- Clique no botão: seleciona o emote do slot
-    slotButton.MouseButton1Click:Connect(function()
-        local item = catalogItems[i]
-        if item then
-            -- destaca o setor inteiro
-            selectedIndex = i
-            renderRadialState()
-
-            selectedEmoteItem = item
-            centerText.Text = item.name or item.Name or "Emote"
-            cartridgeButton.Visible = true
-            LoadTrack(item.id or item.AssetId or item.Id)
-
-            mainContainer.Visible = false
-        end
-    end)
-
-    -- Hover no botão: também ativa o setor inteiro (coerência)
-    slotButton.MouseEnter:Connect(function()
-        hoveredIndex = i
-        renderRadialState()
-    end)
-    slotButton.MouseLeave:Connect(function()
-        if hoveredIndex == i then
-            hoveredIndex = nil
-            renderRadialState()
-        end
-    end)
-
-    slotButtons[i] = slotButton
-    slotImages[i] = slotImg
-    slotHighlights[i] = highlightBg
-    slotTexts[i] = slotText
-end
-
---// HOVER POR SETOR (MouseMovement / Touch)
 UserInputService.InputChanged:Connect(function(input)
     if not mainContainer.Visible then return end
-    if input.UserInputType == Enum.UserInputType.MouseMovement
-       or input.UserInputType == Enum.UserInputType.Touch then
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
         local idx = getSectorFromPosition(Vector2.new(input.Position.X, input.Position.Y))
         if idx ~= hoveredIndex then
             hoveredIndex = idx
@@ -1149,11 +1107,9 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
---// CLIQUE EM QUALQUER PONTO DO SETOR (não só no botão 55x55)
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if not mainContainer.Visible then return end
-
     local isClick = input.UserInputType == Enum.UserInputType.MouseButton1
     local isTouch = input.UserInputType == Enum.UserInputType.Touch
     if not (isClick or isTouch) then return end
@@ -1163,42 +1119,32 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         selectedIndex = idx
         hoveredIndex = idx
         renderRadialState()
-
         local item = catalogItems[idx]
         selectedEmoteItem = item
         centerText.Text = item.name or item.Name or "Emote"
         cartridgeButton.Visible = true
         LoadTrack(item.id or item.AssetId or item.Id)
-
         mainContainer.Visible = false
     end
 end)
 
---// TOUCH RELEASE
 UserInputService.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.Touch then
-        if hoveredIndex then
-            hoveredIndex = nil
-            renderRadialState()
-        end
+        if hoveredIndex then hoveredIndex = nil; renderRadialState() end
     end
 end)
 
---// UPDATE WHEEL SLOTS (funcional original)
+--// UPDATE WHEEL SLOTS
 updateWheelSlots = function()
     for i = 1, TOTAL_SLOTS do
         local item = catalogItems[i]
         local img = slotImages[i]
         local txt = slotTexts[i]
-        local hl = slotHighlights[i]
-
-        if hl then
-            TweenService:Create(hl, TweenInfo.new(0.2), {BackgroundTransparency = 1}):Play()
-        end
 
         if item then
             txt.Visible = false
             local eid = item.id or item.AssetId or item.Id
+            -- Usa a thumbnail como ícone do emote (branco por padrão da silhueta)
             img.Image = "rbxthumb://type=Asset&id=" .. tostring(eid) .. "&w=150&h=150"
             img.Visible = true
         else
@@ -1207,7 +1153,6 @@ updateWheelSlots = function()
             img.Visible = false
         end
     end
-    -- Reaplica estilo radial (para manter coerência após troca de página)
     renderRadialState()
 end
 
@@ -1299,11 +1244,8 @@ nextButton.MouseButton1Click:Connect(function()
 end)
 pageTextBox.FocusLost:Connect(function()
     local num = tonumber(pageTextBox.Text)
-    if num then
-        loadPage(math.clamp(num, 1, totalPages))
-    else
-        pageTextBox.Text = tostring(currentPage)
-    end
+    if num then loadPage(math.clamp(num, 1, totalPages))
+    else pageTextBox.Text = tostring(currentPage) end
 end)
 searchBox.FocusLost:Connect(function()
     currentKeyword = searchBox.Text
@@ -1398,15 +1340,12 @@ buildCategoriesMenu = function()
     end
 end
 
---// TOGGLE (RightShift também)
+--// TOGGLE (RightShift)
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode == Enum.KeyCode.RightShift then
         mainContainer.Visible = not mainContainer.Visible
-        if not mainContainer.Visible then
-            hoveredIndex = nil
-            renderRadialState()
-        end
+        if not mainContainer.Visible then hoveredIndex = nil; renderRadialState() end
     end
 end)
 
@@ -1415,5 +1354,4 @@ buildCategoriesMenu()
 loadPage(1)
 renderRadialState()
 
-print("✅ [7yd7] Radial Menu aplicado sobre o design original.")
-print("   Hover/seleção iluminam o setor inteiro. Clique em qualquer ponto do setor toca o emote.")
+print("✅ [7yd7] Radial Menu visual carregado (rabisco cinza + ícone branco).")
