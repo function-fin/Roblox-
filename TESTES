@@ -1,15 +1,13 @@
 --[[
     Script: 7yd7 | Roda Radial de Emotes - VISUAL FINAL EXATO + MELHORIAS
+    - Sobreposição de emotes igual ao SPWAM (Priority Action)
+    - Ao mover ou pular, todos os emotes param e voltam ao estado natural
     - Design preto e branco (Arcade) com divisórias brancas
-    - Sistema Radial funcional com reset ao trocar de página
     - Modal Salvar movido para a direita
-    - Categorias e Favoritos (Estrela) salvos em JSON persistente
-    - Favoritos aparecem no topo da lista
-    - Botão Externo: Reduzido em 15%, no topo central, esconde ao abrir e volta ao clicar fora.
-    - Múltiplos Emotes simultâneos (Sobreposição forçada com Weight)
-    - Ordem de Categoria preservada por fatia (página 1, 2, etc.)
-    - Sistema de Notificação (Toast) ao salvar emote.
-    - Ícone do sol brilha na categoria selecionada no modal.
+    - Categorias e Favoritos (Estrela) salvos em JSON
+    - Botão Externo no topo central, 15% menor, esconde ao abrir
+    - Ordem de Categoria preservada por fatia
+    - Sistema de Notificação (Toast) ao salvar emote
 ]]
 
 local Players = game:GetService("Players")
@@ -30,7 +28,7 @@ LocalPlayer.CharacterAdded:Connect(function(newCharacter)
     character = newCharacter
     humanoid = newCharacter:WaitForChild("Humanoid")
     lastPosition = character.PrimaryPart and character.PrimaryPart.Position or Vector3.new()
-    ActiveTracks = {} -- Limpa a tabela ao renascer
+    ActiveTracks = {}
 end)
 
 local Settings = { Speed = 1, StopOnMove = true }
@@ -189,34 +187,52 @@ local searchToken = 0
 
 local updateWheelSlots, loadPage, buildCategoriesMenu, openSaveModal
 
---// TRACK (Múltiplos Emotes Forçados)
+--// TRACK (Lógica SPWAM - Sobreposição com Priority Action)
 local function LoadTrack(id)
-    local animId
-    local ok, result = pcall(function() return game:GetObjects("rbxassetid://" .. tostring(id)) end)
-    if ok and result and #result > 0 and result[1]:IsA("Animation") then
-        animId = result[1].AnimationId
-    else
-        animId = "rbxassetid://" .. tostring(id)
-    end
-    
-    local newAnim = Instance.new("Animation")
-    newAnim.AnimationId = animId
-    
-    -- Carrega a animação no Humanoid (Animator)
-    local newTrack = humanoid:LoadAnimation(newAnim)
-    
-    -- Força prioridade máxima para sobrepor
-    newTrack.Priority = Enum.AnimationPriority.Action4
-    newTrack.Looped = true
-    
-    -- Toca e força o Peso (Weight) para 1.0
-    newTrack:Play(0.1, 1, Settings.Speed)
-    newTrack:AdjustWeight(1, 0)
-    
-    -- Guarda na tabela
-    table.insert(ActiveTracks, newTrack)
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+
+    local numId = tonumber(id)
+    if not numId then return end
+
+    pcall(function()
+        local animator = hum:FindFirstChildOfClass("Animator")
+        if animator then
+            -- Para animações Action anteriores (as que ELE mesmo tocou), mas não as nativas
+            -- Isso evita que fique um "combo" infinito de 10 emotes e limpa o anterior
+            for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                if track.Priority == Enum.AnimationPriority.Action then
+                    track:Stop(0.1)
+                end
+            end
+
+            -- Carrega a nova animação
+            local animId
+            local ok, result = pcall(function() return game:GetObjects("rbxassetid://" .. tostring(numId)) end)
+            if ok and result and #result > 0 and result[1]:IsA("Animation") then
+                animId = result[1].AnimationId
+            else
+                animId = "rbxassetid://" .. tostring(numId)
+            end
+
+            local anim = Instance.new("Animation")
+            anim.AnimationId = animId
+            local track = animator:LoadAnimation(anim)
+            
+            -- IMPORTANTE: Priority Action permite sobreposição com nativo
+            -- e com outros emotes (pois não estamos mais usando Action4)
+            track.Priority = Enum.AnimationPriority.Action
+            track.Looped = true
+            track:Play()
+            
+            table.insert(ActiveTracks, track)
+        end
+    end)
 end
 
+--// CONTROLE DE MOVIMENTO (Parar todos ao andar/pular)
 RunService.RenderStepped:Connect(function()
     if character and character:FindFirstChild("HumanoidRootPart") then
         local root = character.HumanoidRootPart
@@ -224,9 +240,11 @@ RunService.RenderStepped:Connect(function()
             local moved = (root.Position - lastPosition).Magnitude > 0.1
             local jumped = humanoid and humanoid:GetState() == Enum.HumanoidStateType.Jumping
             if moved or jumped then
-                -- Para todas as animações ativas no momento para liberar o personagem ao andar
+                -- Para TODOS os emotes ativos
                 for _, track in ipairs(ActiveTracks) do
-                    if track.IsPlaying then track:Stop(0.1) end
+                    if track.IsPlaying then 
+                        track:Stop(0.1) 
+                    end
                 end
                 ActiveTracks = {}
             end
@@ -1250,4 +1268,4 @@ buildCategoriesMenu()
 loadPage(1)
 renderRadialState()
 
-print("✅ [7yd7] Script atualizado com: Ordem de Emotes na Categoria + Sistema de Notificação + Múltiplos Emotes (Forçados)!")
+print("✅ [7yd7] Script atualizado com: Sobreposição SPWAM (Priority Action), Movimento para Tudo, Ordem de Emotes, Notificação e Sol Ativo!")
