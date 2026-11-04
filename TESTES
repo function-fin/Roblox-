@@ -1,17 +1,12 @@
---[[ 
-    Script: 7yd7 | Roda Radial de Emotes — HÍBRIDO DEFINITIVO
-    - JSON do 7yd7 (~40k emotes) + fallback API SearchCatalog
-    - Busca local multi-word instantânea + detecção de ID
-    - Cache local em 7yd7/EmoteListCache.json
-    - Auto-cache: emotes novos do API → disco
-    - Total de páginas real (math.ceil(#filtered/8))
-    - Designs validados preservados (Categorias + Modal Salvar)
-    - Ajustes: fechar ao usar / categoria não fecha / total dinâmico
-    - Interface +20% / Setas +25%
-    - Clique por ângulo (hit-test setorial) + deadzone central
-    - gameProcessed check + conexões rastreáveis (cleanup)
+--[[
+    Script: 7yd7 | Roda Radial de Emotes — RADIAL MENU INTEGRADO
+    - Visual: Radial Menu (anel com 8 setores, divisores, centro EMOTE)
+    - Funcional: busca híbrida (JSON + API), categorias, paginação, save
+    - Emotes tocados via LoadAnimation
+    - Botão externo (+) para abrir/fechar, RightShift também alterna
 ]]
 
+--// SERVICES
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -34,8 +29,7 @@ end)
 
 local Settings = { Speed = 1, StopOnMove = true }
 
--- Assets
-local ID_CARTUCHO_BORDA = "rbxassetid://96618641654782"
+--// ASSETS (preservados do 7yd7)
 local ID_CARTUCHO_SEMBORDA = "rbxassetid://96618641654782"
 local ID_BTN_DOCUMENTO = "rbxassetid://76204370315940"
 local ID_BTN_EXTERNO = "rbxassetid://115103675836200"
@@ -50,7 +44,22 @@ local ID_SETA_DIREITA = "rbxassetid://138794689086376"
 
 local MARGIN = 14
 
--- =================== PERSISTÊNCIA ===================
+--// =================== PALETA RADIAL MENU ===================
+local COLORS = {
+    Normal     = Color3.fromRGB(48, 52, 62),
+    Hover      = Color3.fromRGB(190, 195, 205),
+    Selected   = Color3.fromRGB(115, 123, 138),
+    Divider    = Color3.fromRGB(100, 105, 115),
+    Center     = Color3.fromRGB(25, 27, 33),
+    Border     = Color3.fromRGB(110, 115, 125),
+    Text       = Color3.fromRGB(245, 245, 250),
+    TextDark   = Color3.fromRGB(30, 32, 38),
+    SubText    = Color3.fromRGB(145, 150, 160),
+    PureBlack  = Color3.fromRGB(0, 0, 0),
+    PanelDark  = Color3.fromRGB(18, 20, 25),
+}
+
+--// =================== PERSISTÊNCIA ===================
 local FOLDER = "7yd7"
 local EMOTE_CACHE_FILE = FOLDER .. "/EmoteListCache.json"
 local GITHUB_URL = "https://raw.githubusercontent.com/7yd7/sniper-Emote/refs/heads/test/EmoteSniper.json"
@@ -62,28 +71,7 @@ local function ensureFolder()
     end
 end
 
-local function deepCopy(t)
-    if type(t) ~= "table" then return t end
-    local c = {}
-    for k, v in pairs(t) do c[k] = deepCopy(v) end
-    return c
-end
-
--- =================== CONEXÕES RASTREÁVEIS ===================
-local guiConnections = {}
-local function trackConnection(conn)
-    table.insert(guiConnections, conn)
-    return conn
-end
-
-local function disconnectAll()
-    for _, conn in ipairs(guiConnections) do
-        pcall(function() conn:Disconnect() end)
-    end
-    guiConnections = {}
-end
-
--- =================== BANCO DE EMOTES ===================
+--// =================== BANCO DE EMOTES ===================
 local allEmotes = {}
 local filteredEmotes = {}
 local emoteIndexById = {}
@@ -220,8 +208,8 @@ local function getEmoteName(id)
     return "Emote_" .. tostring(id)
 end
 
--- =================== CARREGAMENTO BLOQUEANTE ===================
-print("[7yd7] Carregando emotes (bloqueante)...")
+--// =================== CARREGAMENTO BLOQUEANTE ===================
+print("[7yd7-Radial] Carregando emotes...")
 local loaded = false
 
 local cached = LoadEmoteCache()
@@ -229,30 +217,28 @@ if cached then
     allEmotes = cached
     RebuildIndex()
     loaded = true
-    print("[7yd7] ✅ Cache local:", #allEmotes)
+    print("[7yd7-Radial] ✅ Cache local:", #allEmotes)
 end
 
 if not loaded then
-    print("[7yd7] Cache vazio, baixando do GitHub...")
     local githubList = FetchFromGitHub()
     if githubList then
         allEmotes = githubList
         RebuildIndex()
         SaveEmoteCache()
         loaded = true
-        print("[7yd7] ✅ GitHub:", #allEmotes)
+        print("[7yd7-Radial] ✅ GitHub:", #allEmotes)
     end
 end
 
 if not loaded then
-    print("[7yd7] GitHub falhou, tentando API...")
     local apiList = FetchFromAPI("")
     if apiList and #apiList > 0 then
         allEmotes = apiList
         RebuildIndex()
         SaveEmoteCache()
         loaded = true
-        print("[7yd7] ✅ API:", #allEmotes)
+        print("[7yd7-Radial] ✅ API:", #allEmotes)
     end
 end
 
@@ -264,12 +250,12 @@ if not loaded then
         {id = 3360689775, name = "Salute"},
     }
     RebuildIndex()
-    print("[7yd7] ⚠️ Fallback mínimo:", #allEmotes)
+    print("[7yd7-Radial] ⚠️ Fallback mínimo:", #allEmotes)
 end
 
 filteredEmotes = allEmotes
 
--- =================== STATE ===================
+--// =================== STATE ===================
 local emoteData = { categories = {} }
 local CurrentTrack = nil
 local currentCategory = "All"
@@ -283,11 +269,10 @@ local slotImages = {}
 local slotHighlights = {}
 local slotTexts = {}
 local searchToken = 0
-local lastWheelVisibleTime = 0
 
-local updateWheelSlots, loadPage, buildCategoriesMenu, openSaveModal, selectSlotIndex
+local updateWheelSlots, loadPage, buildCategoriesMenu, openSaveModal
 
--- =================== TRACK ===================
+--// =================== TRACK ===================
 local function LoadTrack(id)
     if CurrentTrack then CurrentTrack:Stop(0.1) end
     local animId
@@ -309,7 +294,7 @@ local function LoadTrack(id)
     CurrentTrack = newTrack
 end
 
-trackConnection(RunService.RenderStepped:Connect(function()
+RunService.RenderStepped:Connect(function()
     if character and character:FindFirstChild("HumanoidRootPart") then
         local root = character.HumanoidRootPart
         if Settings.StopOnMove and CurrentTrack and CurrentTrack.IsPlaying then
@@ -322,66 +307,69 @@ trackConnection(RunService.RenderStepped:Connect(function()
         end
         lastPosition = root.Position
     end
-end))
-
--- =================== PARENT GUI ===================
-local success, parentTarget = pcall(function()
-    if gethui then return gethui()
-    elseif syn and syn.protect_gui then
-        local gui = Instance.new("ScreenGui")
-        syn.protect_gui(gui)
-        return gui
-    else return CoreGui end
 end)
-if not success or not parentTarget then parentTarget = Players.LocalPlayer:WaitForChild("PlayerGui") end
 
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "EmoteRadialGui_Hybrid"
-screenGui.ResetOnSpawn = false
-screenGui.IgnoreGuiInset = true
-screenGui.Parent = parentTarget
+--// =================== PARENT GUI ===================
+local guiParent = CoreGui
+pcall(function()
+    if gethui then guiParent = gethui() end
+end)
 
--- BOTÃO EXTERNO (+20%)
+local previous = guiParent:FindFirstChild("EmoteRadialGui_RadialMenu")
+if previous then previous:Destroy() end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "EmoteRadialGui_RadialMenu"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.DisplayOrder = 999999
+ScreenGui.Parent = guiParent
+
+--// =================== BOTÃO EXTERNO ===================
 local toggleButton = Instance.new("ImageButton")
 toggleButton.Size = UDim2.new(0, 53, 0, 53)
 toggleButton.AnchorPoint = Vector2.new(0.5, 0.5)
 toggleButton.Position = UDim2.new(1, -MARGIN - 26, 1, -MARGIN - 26)
 toggleButton.BackgroundTransparency = 1
 toggleButton.Image = ID_BTN_EXTERNO
-toggleButton.Parent = screenGui
+toggleButton.Parent = ScreenGui
 
 local dragging, dragInput, dragStart, startPos
-trackConnection(toggleButton.InputBegan:Connect(function(input)
+toggleButton.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true; dragStart = input.Position; startPos = toggleButton.Position
-        trackConnection(input.Changed:Connect(function()
+        input.Changed:Connect(function()
             if input.UserInputState == Enum.UserInputState.End then dragging = false end
-        end))
+        end)
     end
-end))
-trackConnection(toggleButton.InputChanged:Connect(function(input)
+end)
+toggleButton.InputChanged:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
-end))
-trackConnection(UserInputService.InputChanged:Connect(function(input)
+end)
+UserInputService.InputChanged:Connect(function(input)
     if input == dragInput and dragging then
         local delta = input.Position - dragStart
         toggleButton.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
-end))
+end)
 
 local mainContainer = Instance.new("Frame")
 mainContainer.Size = UDim2.new(1, 0, 1, 0)
 mainContainer.BackgroundTransparency = 1
-mainContainer.Visible = true
-mainContainer.Parent = screenGui
+mainContainer.Visible = false
+mainContainer.Parent = ScreenGui
 
-trackConnection(toggleButton.MouseButton1Click:Connect(function()
-    mainContainer.Visible = not mainContainer.Visible
-    if mainContainer.Visible then lastWheelVisibleTime = tick() end
-end))
+toggleButton.MouseButton1Click:Connect(function() mainContainer.Visible = not mainContainer.Visible end)
 
--- RODA RADIAL (+20%)
-local WHEEL_SIZE = 276
+--// =================== RODA RADIAL ===================
+local WHEEL_SIZE = 320
+local RADIUS = WHEEL_SIZE / 2
+local INNER_RADIUS = 68
+local OUTER_RADIUS = 156
+local CELL_SIZE = 2
+local SECTOR_COUNT = 8
+local SECTOR_ANGLE = 360 / SECTOR_COUNT
+
 local wheelFrame = Instance.new("Frame")
 wheelFrame.Size = UDim2.fromOffset(WHEEL_SIZE, WHEEL_SIZE)
 wheelFrame.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -389,7 +377,267 @@ wheelFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 wheelFrame.BackgroundTransparency = 1
 wheelFrame.Parent = mainContainer
 
--- BARRA SUPERIOR (+20%)
+-- ===== Setores (pixel-run) =====
+local sectorParts = {}
+for i = 1, SECTOR_COUNT do sectorParts[i] = {} end
+
+local function createSectorRun(index, row, startColumn, endColumn)
+    local frame = Instance.new("Frame")
+    frame.Name = "Sector_" .. index
+    frame.BorderSizePixel = 0
+    frame.BackgroundColor3 = COLORS.Normal
+    frame.BackgroundTransparency = 0.08
+    frame.Position = UDim2.fromOffset(startColumn * CELL_SIZE, row * CELL_SIZE)
+    frame.Size = UDim2.fromOffset((endColumn - startColumn + 1) * CELL_SIZE + 0.2, CELL_SIZE + 0.2)
+    frame.ZIndex = 2
+    frame.Parent = wheelFrame
+    table.insert(sectorParts[index], frame)
+end
+
+local columns = math.floor(WHEEL_SIZE / CELL_SIZE)
+local rows = math.floor(WHEEL_SIZE / CELL_SIZE)
+
+for row = 0, rows - 1 do
+    local currentSector = nil
+    local startColumn = nil
+    local y = -RADIUS + (row + 0.5) * CELL_SIZE
+    for column = 0, columns - 1 do
+        local x = -RADIUS + (column + 0.5) * CELL_SIZE
+        local distance = math.sqrt(x * x + y * y)
+        local sector = nil
+        if distance >= INNER_RADIUS and distance <= OUTER_RADIUS then
+            local angle = math.deg(math.atan2(y, x))
+            local correctedAngle = (angle + 90 + (SECTOR_ANGLE / 2)) % 360
+            sector = math.floor(correctedAngle / SECTOR_ANGLE) + 1
+        end
+        if sector ~= currentSector then
+            if currentSector then
+                createSectorRun(currentSector, row, startColumn, column - 1)
+            end
+            currentSector = sector
+            startColumn = column
+        end
+    end
+    if currentSector then
+        createSectorRun(currentSector, row, startColumn, columns - 1)
+    end
+end
+
+-- ===== Divisores =====
+for i = 0, SECTOR_COUNT - 1 do
+    local angle = math.rad(-112.5 + (i * SECTOR_ANGLE))
+    local middleRadius = (INNER_RADIUS + OUTER_RADIUS) / 2
+    local line = Instance.new("Frame")
+    line.Name = "SectorDivider"
+    line.AnchorPoint = Vector2.new(0.5, 0.5)
+    line.Size = UDim2.fromOffset(2, OUTER_RADIUS - INNER_RADIUS)
+    line.Position = UDim2.fromOffset(
+        RADIUS + math.cos(angle) * middleRadius,
+        RADIUS + math.sin(angle) * middleRadius
+    )
+    line.Rotation = math.deg(angle) + 90
+    line.BackgroundColor3 = COLORS.Divider
+    line.BackgroundTransparency = 0.35
+    line.BorderSizePixel = 0
+    line.ZIndex = 3
+    line.Parent = wheelFrame
+end
+
+-- ===== Borda externa =====
+local outerBorder = Instance.new("Frame")
+outerBorder.Size = UDim2.fromOffset(OUTER_RADIUS * 2, OUTER_RADIUS * 2)
+outerBorder.Position = UDim2.fromOffset(RADIUS - OUTER_RADIUS, RADIUS - OUTER_RADIUS)
+outerBorder.BackgroundTransparency = 1
+outerBorder.BorderSizePixel = 0
+outerBorder.ZIndex = 4
+outerBorder.Parent = wheelFrame
+Instance.new("UICorner", outerBorder).CornerRadius = UDim.new(1, 0)
+local outerStroke = Instance.new("UIStroke", outerBorder)
+outerStroke.Color = COLORS.Border
+outerStroke.Thickness = 1.5
+outerStroke.Transparency = 0.2
+
+-- ===== Círculo central =====
+local Center = Instance.new("Frame")
+Center.Name = "Center"
+Center.Size = UDim2.fromOffset(INNER_RADIUS * 2, INNER_RADIUS * 2)
+Center.Position = UDim2.fromOffset(RADIUS - INNER_RADIUS, RADIUS - INNER_RADIUS)
+Center.BackgroundColor3 = COLORS.Center
+Center.BorderSizePixel = 0
+Center.ZIndex = 5
+Center.Parent = wheelFrame
+Instance.new("UICorner", Center).CornerRadius = UDim.new(1, 0)
+local centerStroke = Instance.new("UIStroke", Center)
+centerStroke.Color = COLORS.Border
+centerStroke.Thickness = 1.5
+centerStroke.Transparency = 0.25
+
+-- Centro título / subtítulo
+local CenterTitle = Instance.new("TextLabel")
+CenterTitle.Size = UDim2.fromScale(1, 0.35)
+CenterTitle.Position = UDim2.fromScale(0, 0.29)
+CenterTitle.BackgroundTransparency = 1
+CenterTitle.Text = "EMOTE"
+CenterTitle.TextColor3 = COLORS.Text
+CenterTitle.TextSize = 19
+CenterTitle.Font = Enum.Font.GothamBold
+CenterTitle.ZIndex = 6
+CenterTitle.Parent = Center
+
+local CenterSubtitle = Instance.new("TextLabel")
+CenterSubtitle.Size = UDim2.fromScale(1, 0.2)
+CenterSubtitle.Position = UDim2.fromScale(0, 0.57)
+CenterSubtitle.BackgroundTransparency = 1
+CenterSubtitle.Text = "RADIAL MENU"
+CenterSubtitle.TextColor3 = COLORS.SubText
+CenterSubtitle.TextSize = 9
+CenterSubtitle.Font = Enum.Font.GothamMedium
+CenterSubtitle.ZIndex = 6
+CenterSubtitle.Parent = Center
+
+-- Contador de página no centro (substitui subtitle em runtime)
+local CenterCounter = Instance.new("TextLabel")
+CenterCounter.Size = UDim2.fromScale(1, 0.18)
+CenterCounter.Position = UDim2.fromScale(0, 0.58)
+CenterCounter.BackgroundTransparency = 1
+CenterCounter.Text = "1 / " .. tostring(totalPages)
+CenterCounter.TextColor3 = COLORS.SubText
+CenterCounter.TextSize = 9
+CenterCounter.Font = Enum.Font.GothamMedium
+CenterCounter.ZIndex = 6
+CenterCounter.Visible = false
+CenterCounter.Parent = Center
+
+-- ===== Ícones + botões dos 8 setores =====
+local iconRadius = (INNER_RADIUS + OUTER_RADIUS) / 2
+for i = 1, SECTOR_COUNT do
+    local angle = math.rad(-90 + ((i - 1) * SECTOR_ANGLE))
+    local px = RADIUS + math.cos(angle) * iconRadius
+    local py = RADIUS + math.sin(angle) * iconRadius
+
+    -- Botão clicável (hitbox)
+    local slotButton = Instance.new("TextButton")
+    slotButton.Size = UDim2.fromOffset(58, 58)
+    slotButton.AnchorPoint = Vector2.new(0.5, 0.5)
+    slotButton.Position = UDim2.fromOffset(px, py)
+    slotButton.BackgroundTransparency = 1
+    slotButton.Text = ""
+    slotButton.ZIndex = 7
+    slotButton.Parent = wheelFrame
+
+    -- Ícone (thumb do emote ou número)
+    local slotImg = Instance.new("ImageLabel")
+    slotImg.Size = UDim2.new(1, -10, 1, -10)
+    slotImg.Position = UDim2.new(0, 5, 0, 5)
+    slotImg.BackgroundTransparency = 1
+    slotImg.ScaleType = Enum.ScaleType.Fit
+    slotImg.ZIndex = 7
+    slotImg.Parent = slotButton
+
+    local slotText = Instance.new("TextLabel")
+    slotText.Size = UDim2.new(1, 0, 1, 0)
+    slotText.BackgroundTransparency = 1
+    slotText.Text = tostring(i)
+    slotText.TextColor3 = COLORS.Text
+    slotText.TextSize = 22
+    slotText.Font = Enum.Font.GothamBold
+    slotText.ZIndex = 8
+    slotText.Parent = slotButton
+
+    slotButton.MouseButton1Click:Connect(function()
+        local item = catalogItems[i]
+        if item then
+            selectedEmoteItem = item
+            CenterTitle.Text = item.name or item.Name or "Emote"
+            cartridgeButton.Visible = true
+            LoadTrack(item.id or item.AssetId or item.Id)
+            mainContainer.Visible = false
+            -- Reset visual
+            hoveredIndex = nil; selectedIndex = nil; renderState()
+        end
+    end)
+
+    slotButtons[i] = slotButton
+    slotImages[i] = slotImg
+    slotTexts[i] = slotText
+end
+
+-- ===== Estilo dos setores (hover/selected) =====
+local selectedIndex = nil
+local hoveredIndex = nil
+local lastSelected = nil
+local lastHovered = nil
+
+local function updateSectorStyle(index)
+    local color = COLORS.Normal
+    local transparency = 0.08
+    if index == selectedIndex then
+        color = COLORS.Selected
+        transparency = 0.08
+    elseif index == hoveredIndex then
+        color = COLORS.Hover
+        transparency = 0.2
+    end
+    for _, part in ipairs(sectorParts[index]) do
+        part.BackgroundColor3 = color
+        part.BackgroundTransparency = transparency
+    end
+    local txt = slotTexts[index]
+    if txt then
+        if index == selectedIndex then
+            txt.TextColor3 = Color3.fromRGB(255, 255, 255)
+        elseif index == hoveredIndex then
+            txt.TextColor3 = COLORS.TextDark
+        else
+            txt.TextColor3 = COLORS.Text
+        end
+    end
+end
+
+local function renderState()
+    local changed = {}
+    if lastSelected then changed[lastSelected] = true end
+    if lastHovered then changed[lastHovered] = true end
+    if selectedIndex then changed[selectedIndex] = true end
+    if hoveredIndex then changed[hoveredIndex] = true end
+    for index in pairs(changed) do
+        updateSectorStyle(index)
+    end
+    lastSelected = selectedIndex
+    lastHovered = hoveredIndex
+end
+
+local function getSectorFromPosition(position)
+    local center = wheelFrame.AbsolutePosition + (wheelFrame.AbsoluteSize / 2)
+    local dx = position.X - center.X
+    local dy = position.Y - center.Y
+    local distance = math.sqrt(dx * dx + dy * dy)
+    if distance < INNER_RADIUS or distance > OUTER_RADIUS then return nil end
+    local angle = math.deg(math.atan2(dy, dx))
+    local correctedAngle = (angle + 90 + (SECTOR_ANGLE / 2)) % 360
+    local index = math.floor(correctedAngle / SECTOR_ANGLE) + 1
+    return math.clamp(index, 1, SECTOR_COUNT)
+end
+
+UserInputService.InputChanged:Connect(function(input)
+    if not mainContainer.Visible then return end
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        local newIndex = getSectorFromPosition(Vector2.new(input.Position.X, input.Position.Y))
+        if newIndex ~= hoveredIndex then
+            hoveredIndex = newIndex
+            renderState()
+        end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch then
+        hoveredIndex = nil
+        renderState()
+    end
+end)
+
+--// =================== BARRA SUPERIOR (Search + Doc) ===================
 local topBar = Instance.new("Frame")
 topBar.Size = UDim2.fromOffset(372, 38)
 topBar.AnchorPoint = Vector2.new(0.5, 1)
@@ -409,12 +657,13 @@ local searchContainer = Instance.new("Frame")
 searchContainer.Size = UDim2.fromOffset(276, 36)
 searchContainer.AnchorPoint = Vector2.new(0, 0.5)
 searchContainer.Position = UDim2.new(0, 48, 0.5, 0)
-searchContainer.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+searchContainer.BackgroundColor3 = COLORS.Center
 searchContainer.Parent = topBar
 Instance.new("UICorner", searchContainer).CornerRadius = UDim.new(0, 18)
 local searchStroke = Instance.new("UIStroke", searchContainer)
-searchStroke.Color = Color3.fromRGB(255, 255, 255)
+searchStroke.Color = COLORS.Border
 searchStroke.Thickness = 1.8
+searchStroke.Transparency = 0.15
 
 local searchBox = Instance.new("TextBox")
 searchBox.Size = UDim2.new(1, -19, 1, 0)
@@ -422,8 +671,8 @@ searchBox.Position = UDim2.new(0, 10, 0, 0)
 searchBox.BackgroundTransparency = 1
 searchBox.PlaceholderText = "Search/Emotes"
 searchBox.Text = ""
-searchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-searchBox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
+searchBox.TextColor3 = COLORS.Text
+searchBox.PlaceholderColor3 = COLORS.SubText
 searchBox.TextSize = 13
 searchBox.Font = Enum.Font.Arcade
 searchBox.ClearTextOnFocus = false
@@ -439,11 +688,11 @@ cartridgeButton.Image = ID_CARTUCHO_SEMBORDA
 cartridgeButton.Visible = false
 cartridgeButton.Parent = topBar
 
-trackConnection(cartridgeButton.MouseButton1Click:Connect(function()
+cartridgeButton.MouseButton1Click:Connect(function()
     if selectedEmoteItem then openSaveModal() end
-end))
+end)
 
--- BARRA INFERIOR (+20%) / SETAS (+25%)
+--// =================== BARRA INFERIOR (Setas + Página) ===================
 local navContainer = Instance.new("Frame")
 navContainer.Size = UDim2.fromOffset(240, 34)
 navContainer.AnchorPoint = Vector2.new(0.5, 0)
@@ -470,7 +719,7 @@ local pageTextBox = Instance.new("TextBox")
 pageTextBox.Size = UDim2.fromOffset(38, 26)
 pageTextBox.BackgroundTransparency = 1
 pageTextBox.Text = tostring(currentPage)
-pageTextBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+pageTextBox.TextColor3 = COLORS.Text
 pageTextBox.TextSize = 14
 pageTextBox.Font = Enum.Font.Arcade
 pageTextBox.ClearTextOnFocus = false
@@ -484,12 +733,11 @@ dividerLine.BackgroundTransparency = 1
 dividerLine.LayoutOrder = 3
 dividerLine.Parent = navContainer
 
-local dashCount = 12
-for i = 1, dashCount do
+for i = 1, 12 do
     local dash = Instance.new("Frame")
     dash.Size = UDim2.new(0, 3, 1, 0)
-    dash.Position = UDim2.new((i-1)/dashCount, 0, 0, 0)
-    dash.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    dash.Position = UDim2.new((i-1)/12, 0, 0, 0)
+    dash.BackgroundColor3 = COLORS.Border
     dash.BorderSizePixel = 0
     dash.Parent = dividerLine
 end
@@ -498,7 +746,7 @@ local pageInfoLabel = Instance.new("TextLabel")
 pageInfoLabel.Size = UDim2.fromOffset(48, 26)
 pageInfoLabel.BackgroundTransparency = 1
 pageInfoLabel.Text = tostring(totalPages)
-pageInfoLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+pageInfoLabel.TextColor3 = COLORS.Text
 pageInfoLabel.TextSize = 14
 pageInfoLabel.TextXAlignment = Enum.TextXAlignment.Center
 pageInfoLabel.Font = Enum.Font.Arcade
@@ -512,20 +760,19 @@ nextButton.Image = ID_SETA_DIREITA
 nextButton.LayoutOrder = 5
 nextButton.Parent = navContainer
 
--- ==========================================
--- PAINEL LATERAL DE CATEGORIAS (+20%)
--- ==========================================
+--// =================== PAINEL LATERAL ===================
 local sidePanel = Instance.new("Frame")
 sidePanel.Size = UDim2.fromOffset(180, 276)
 sidePanel.AnchorPoint = Vector2.new(1, 0.5)
 sidePanel.Position = UDim2.new(0, -MARGIN, 0.5, 0)
-sidePanel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+sidePanel.BackgroundColor3 = COLORS.Center
 sidePanel.Visible = false
 sidePanel.Parent = wheelFrame
 Instance.new("UICorner", sidePanel).CornerRadius = UDim.new(0, 10)
 local sideStroke = Instance.new("UIStroke", sidePanel)
-sideStroke.Color = Color3.fromRGB(255, 255, 255)
+sideStroke.Color = COLORS.Border
 sideStroke.Thickness = 2
+sideStroke.Transparency = 0.15
 sidePanel.ClipsDescendants = true
 
 local sideHeader = Instance.new("Frame")
@@ -546,7 +793,7 @@ sideTitle.Size = UDim2.new(1, -48, 1, 0)
 sideTitle.Position = UDim2.new(0, 42, 0, 0)
 sideTitle.BackgroundTransparency = 1
 sideTitle.Text = "DATA BASE EMOTE V1"
-sideTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+sideTitle.TextColor3 = COLORS.Text
 sideTitle.TextSize = 13
 sideTitle.Font = Enum.Font.Arcade
 sideTitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -557,7 +804,7 @@ sideScrolling.Size = UDim2.new(1, -10, 1, -120)
 sideScrolling.Position = UDim2.new(0, 5, 0, 46)
 sideScrolling.BackgroundTransparency = 1
 sideScrolling.ScrollBarThickness = 2
-sideScrolling.ScrollBarImageColor3 = Color3.fromRGB(255, 255, 255)
+sideScrolling.ScrollBarImageColor3 = COLORS.Border
 sideScrolling.CanvasSize = UDim2.new(0, 0, 0, 0)
 sideScrolling.AutomaticCanvasSize = Enum.AutomaticSize.Y
 sideScrolling.Parent = sidePanel
@@ -583,13 +830,14 @@ local function createFooterButton(text, iconId, order, extraSymbol)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(1, 0, 0, 34)
     btn.Position = UDim2.new(0, 0, 0, (order - 1) * 38)
-    btn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    btn.BackgroundColor3 = COLORS.Normal
+    btn.BackgroundTransparency = 0.15
     btn.AutoButtonColor = false
     btn.Text = ""
     btn.Parent = sideFooter
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 5)
     local stroke = Instance.new("UIStroke", btn)
-    stroke.Color = Color3.fromRGB(255, 255, 255)
+    stroke.Color = COLORS.Border
     stroke.Thickness = 1
     stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
@@ -605,7 +853,7 @@ local function createFooterButton(text, iconId, order, extraSymbol)
     txt.Position = UDim2.new(0, 31, 0, 0)
     txt.BackgroundTransparency = 1
     txt.Text = text
-    txt.TextColor3 = Color3.fromRGB(255, 255, 255)
+    txt.TextColor3 = COLORS.Text
     txt.TextSize = 11
     txt.Font = Enum.Font.Arcade
     txt.TextXAlignment = Enum.TextXAlignment.Left
@@ -617,7 +865,7 @@ local function createFooterButton(text, iconId, order, extraSymbol)
         symbol.Position = UDim2.new(1, -19, 0, 0)
         symbol.BackgroundTransparency = 1
         symbol.Text = extraSymbol
-        symbol.TextColor3 = Color3.fromRGB(255, 255, 255)
+        symbol.TextColor3 = COLORS.Text
         symbol.TextSize = 12
         symbol.Font = Enum.Font.Arcade
         symbol.Parent = btn
@@ -628,9 +876,9 @@ end
 local createCatGlobalBtn = createFooterButton("Criar Categoria", ID_SIMBOLO_MAIS, 1, ">")
 local removeCatGlobalBtn = createFooterButton("Remover Categoria", ID_SIMBOLO_LIXEIRA, 2)
 
-trackConnection(docButton.MouseButton1Click:Connect(function()
+docButton.MouseButton1Click:Connect(function()
     sidePanel.Visible = not sidePanel.Visible
-end))
+end)
 
 local function promptRenameCategory(oldName)
     local targetBtn = nil
@@ -641,7 +889,6 @@ local function promptRenameCategory(oldName)
         end
     end
     if not targetBtn then return end
-
     local titleLabel = targetBtn:FindFirstChild("CatTitle")
     if not titleLabel then return end
 
@@ -673,15 +920,15 @@ local function promptRenameCategory(oldName)
         textBox:Destroy()
         buildCategoriesMenu()
     end
-    trackConnection(textBox.FocusLost:Connect(function(enterPressed) finishRename(enterPressed) end))
+    textBox.FocusLost:Connect(function(enterPressed) finishRename(enterPressed) end)
 end
 
-trackConnection(createCatGlobalBtn.MouseButton1Click:Connect(function()
+createCatGlobalBtn.MouseButton1Click:Connect(function()
     table.insert(emoteData.categories, { name = "Nova Cat " .. (#emoteData.categories + 1), emotes = {} })
     buildCategoriesMenu()
-end))
+end)
 
-trackConnection(removeCatGlobalBtn.MouseButton1Click:Connect(function()
+removeCatGlobalBtn.MouseButton1Click:Connect(function()
     if currentCategory == "All" then return end
     for i, cat in ipairs(emoteData.categories) do
         if cat.name == currentCategory then
@@ -692,22 +939,20 @@ trackConnection(removeCatGlobalBtn.MouseButton1Click:Connect(function()
     end
     buildCategoriesMenu()
     loadPage(1)
-end))
+end)
 
--- ==========================================
--- MODAL SALVAR (+20%)
--- ==========================================
+--// =================== MODAL SALVAR ===================
 local saveModal = Instance.new("Frame")
 saveModal.Size = UDim2.fromOffset(336, 240)
 saveModal.AnchorPoint = Vector2.new(0.5, 0.5)
 saveModal.Position = UDim2.new(0.5, 0, 0.5, 0)
-saveModal.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+saveModal.BackgroundColor3 = COLORS.Center
 saveModal.Visible = false
 saveModal.ZIndex = 10
 saveModal.Parent = mainContainer
 Instance.new("UICorner", saveModal).CornerRadius = UDim.new(0, 10)
 local mStroke = Instance.new("UIStroke", saveModal)
-mStroke.Color = Color3.fromRGB(255, 255, 255)
+mStroke.Color = COLORS.Border
 mStroke.Thickness = 2
 mStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
@@ -730,7 +975,7 @@ modalTitle.Size = UDim2.new(1, -108, 1, 0)
 modalTitle.Position = UDim2.new(0, 48, 0, 0)
 modalTitle.BackgroundTransparency = 1
 modalTitle.Text = "Salvar em Categoria"
-modalTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+modalTitle.TextColor3 = COLORS.Text
 modalTitle.TextSize = 18
 modalTitle.Font = Enum.Font.Arcade
 modalTitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -746,12 +991,12 @@ closeModalBtn.Image = ID_FECHAR_X
 closeModalBtn.ZIndex = 11
 closeModalBtn.Parent = modalHeader
 
-trackConnection(closeModalBtn.MouseButton1Click:Connect(function() saveModal.Visible = false end))
+closeModalBtn.MouseButton1Click:Connect(function() saveModal.Visible = false end)
 
 local modalDivider = Instance.new("Frame")
 modalDivider.Size = UDim2.new(1, -29, 0, 1)
 modalDivider.Position = UDim2.new(0, 14, 0, 46)
-modalDivider.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+modalDivider.BackgroundColor3 = COLORS.Border
 modalDivider.BorderSizePixel = 0
 modalDivider.ZIndex = 11
 modalDivider.Parent = saveModal
@@ -761,7 +1006,7 @@ modalSubtitle.Size = UDim2.new(1, -29, 0, 24)
 modalSubtitle.Position = UDim2.new(0, 14, 0, 50)
 modalSubtitle.BackgroundTransparency = 1
 modalSubtitle.Text = "Escolha uma categoria para salvar o emote:"
-modalSubtitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+modalSubtitle.TextColor3 = COLORS.SubText
 modalSubtitle.TextSize = 12
 modalSubtitle.Font = Enum.Font.Arcade
 modalSubtitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -802,7 +1047,8 @@ openSaveModal = function()
     for i, cat in ipairs(emoteData.categories) do
         local catBtn = Instance.new("TextButton")
         catBtn.Size = UDim2.new(1, 0, 0, 31)
-        catBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        catBtn.BackgroundColor3 = COLORS.Normal
+        catBtn.BackgroundTransparency = 0.15
         catBtn.AutoButtonColor = false
         catBtn.Text = ""
         catBtn.LayoutOrder = i
@@ -810,7 +1056,7 @@ openSaveModal = function()
         catBtn.Parent = modalScrolling
         Instance.new("UICorner", catBtn).CornerRadius = UDim.new(0, 7)
         local cs = Instance.new("UIStroke", catBtn)
-        cs.Color = Color3.fromRGB(255, 255, 255)
+        cs.Color = COLORS.Border
         cs.Thickness = 1.8
         cs.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
@@ -827,7 +1073,7 @@ openSaveModal = function()
         catText.Position = UDim2.new(0, 38, 0, 0)
         catText.BackgroundTransparency = 1
         catText.Text = cat.name
-        catText.TextColor3 = Color3.fromRGB(255, 255, 255)
+        catText.TextColor3 = COLORS.Text
         catText.TextSize = 13
         catText.Font = Enum.Font.Arcade
         catText.TextXAlignment = Enum.TextXAlignment.Left
@@ -839,25 +1085,25 @@ openSaveModal = function()
         catArrow.Position = UDim2.new(1, -24, 0, 0)
         catArrow.BackgroundTransparency = 1
         catArrow.Text = ">"
-        catArrow.TextColor3 = Color3.fromRGB(255, 255, 255)
+        catArrow.TextColor3 = COLORS.Text
         catArrow.TextSize = 13
         catArrow.Font = Enum.Font.Arcade
         catArrow.ZIndex = 12
         catArrow.Parent = catBtn
 
-        trackConnection(catBtn.MouseButton1Click:Connect(function()
+        catBtn.MouseButton1Click:Connect(function()
             targetCategoryToSave = cat.name
             for _, b in ipairs(modalScrolling:GetChildren()) do
                 if b:IsA("TextButton") then
                     local s = b:FindFirstChildOfClass("UIStroke")
-                    if s then s.Thickness = 1.8; s.Color = Color3.fromRGB(255, 255, 255) end
-                    b.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+                    if s then s.Thickness = 1.8; s.Color = COLORS.Border end
+                    b.BackgroundColor3 = COLORS.Normal
                 end
             end
-            catBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            catBtn.BackgroundColor3 = COLORS.Selected
             local s = catBtn:FindFirstChildOfClass("UIStroke")
             if s then s.Thickness = 2 end
-        end))
+        end)
     end
     saveModal.Visible = true
 end
@@ -865,14 +1111,15 @@ end
 local saveConfirmBtn = Instance.new("TextButton")
 saveConfirmBtn.Size = UDim2.new(1, -29, 0, 38)
 saveConfirmBtn.Position = UDim2.new(0, 14, 1, -48)
-saveConfirmBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+saveConfirmBtn.BackgroundColor3 = COLORS.Normal
+saveConfirmBtn.BackgroundTransparency = 0.1
 saveConfirmBtn.AutoButtonColor = false
 saveConfirmBtn.Text = ""
 saveConfirmBtn.ZIndex = 11
 saveConfirmBtn.Parent = saveModal
 Instance.new("UICorner", saveConfirmBtn).CornerRadius = UDim.new(0, 7)
 local sStroke = Instance.new("UIStroke", saveConfirmBtn)
-sStroke.Color = Color3.fromRGB(255, 255, 255)
+sStroke.Color = COLORS.Border
 sStroke.Thickness = 1.8
 sStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
@@ -889,14 +1136,14 @@ saveConfirmText.Size = UDim2.new(0, 84, 1, 0)
 saveConfirmText.Position = UDim2.new(0.5, -17, 0, 0)
 saveConfirmText.BackgroundTransparency = 1
 saveConfirmText.Text = "Salvar"
-saveConfirmText.TextColor3 = Color3.fromRGB(255, 255, 255)
+saveConfirmText.TextColor3 = COLORS.Text
 saveConfirmText.TextSize = 16
 saveConfirmText.Font = Enum.Font.Arcade
 saveConfirmText.TextXAlignment = Enum.TextXAlignment.Left
 saveConfirmText.ZIndex = 12
 saveConfirmText.Parent = saveConfirmBtn
 
-trackConnection(saveConfirmBtn.MouseButton1Click:Connect(function()
+saveConfirmBtn.MouseButton1Click:Connect(function()
     if selectedEmoteItem and targetCategoryToSave then
         local id = tostring(selectedEmoteItem.AssetId or selectedEmoteItem.Id or selectedEmoteItem.id)
         local name = selectedEmoteItem.Name or selectedEmoteItem.name or getEmoteName(id)
@@ -917,216 +1164,14 @@ trackConnection(saveConfirmBtn.MouseButton1Click:Connect(function()
         buildCategoriesMenu()
         if currentCategory == targetCategoryToSave then loadPage(1) end
     end
-end))
+end)
 
--- ====== ELEMENTOS VISUAIS DA RODA ======
-local outerCircle = Instance.new("Frame")
-outerCircle.Size = UDim2.new(1, 0, 1, 0)
-outerCircle.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-outerCircle.Parent = wheelFrame
-Instance.new("UICorner", outerCircle).CornerRadius = UDim.new(0.5, 0)
-local outerStroke = Instance.new("UIStroke", outerCircle)
-outerStroke.Color = Color3.fromRGB(255, 255, 255)
-outerStroke.Thickness = 3
-
-local CENTER_RATIO = 0.42
-local centerCircle = Instance.new("Frame")
-centerCircle.Size = UDim2.new(CENTER_RATIO, 0, CENTER_RATIO, 0)
-centerCircle.AnchorPoint = Vector2.new(0.5, 0.5)
-centerCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
-centerCircle.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-centerCircle.ZIndex = 4
-centerCircle.Parent = wheelFrame
-Instance.new("UICorner", centerCircle).CornerRadius = UDim.new(0.5, 0)
-local centerStroke = Instance.new("UIStroke", centerCircle)
-centerStroke.Color = Color3.fromRGB(255, 255, 255)
-centerStroke.Thickness = 2
-
-local centerText = Instance.new("TextLabel")
-centerText.Size = UDim2.new(0.8, 0, 0.8, 0)
-centerText.AnchorPoint = Vector2.new(0.5, 0.5)
-centerText.Position = UDim2.new(0.5, 0, 0.5, 0)
-centerText.BackgroundTransparency = 1
-centerText.Text = "Selecione um\nemote"
-centerText.TextColor3 = Color3.fromRGB(255, 255, 255)
-centerText.TextScaled = true
-centerText.Font = Enum.Font.Arcade
-centerText.ZIndex = 5
-centerText.Parent = centerCircle
-
-local radiusTotal = WHEEL_SIZE / 2
-local innerRadius = radiusTotal * CENTER_RATIO
-local outerRadius = radiusTotal
-local slotLabelRadius = (innerRadius + outerRadius) / 2
-local TOTAL_SLOTS = 8
-
-local SLICE_ANGLE = 360 / TOTAL_SLOTS
-for i = 1, TOTAL_SLOTS do
-    local dividerAngleDeg = -90 + ((i - 1) * SLICE_ANGLE) - (SLICE_ANGLE / 2)
-    local dividerAngleRad = math.rad(dividerAngleDeg)
-
-    local x1 = radiusTotal + math.cos(dividerAngleRad) * innerRadius
-    local y1 = radiusTotal + math.sin(dividerAngleRad) * innerRadius
-    local x2 = radiusTotal + math.cos(dividerAngleRad) * outerRadius
-    local y2 = radiusTotal + math.sin(dividerAngleRad) * outerRadius
-
-    local dx, dy = x2 - x1, y2 - y1
-    local lineLength = math.sqrt(dx * dx + dy * dy)
-    local lineAngle = math.deg(math.atan2(dy, dx))
-
-    local line = Instance.new("Frame")
-    line.Size = UDim2.new(0, lineLength, 0, 2)
-    line.AnchorPoint = Vector2.new(0.5, 0.5)
-    line.Position = UDim2.new(0, (x1 + x2) / 2, 0, (y1 + y2) / 2)
-    line.Rotation = lineAngle
-    line.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    line.BorderSizePixel = 0
-    line.ZIndex = 3
-    line.Parent = wheelFrame
-end
-
--- Função centralizada de seleção por índice (usada por clique no botão E por hit-test angular)
-selectSlotIndex = function(i)
-    local item = catalogItems[i]
-    if not item then return false end
-
-    local hl = slotHighlights[i]
-    local img = slotImages[i]
-
-    for _, h in pairs(slotHighlights) do
-        TweenService:Create(h, TweenInfo.new(0.15, Enum.EasingStyle.Quad), {BackgroundTransparency = 1}):Play()
-    end
-    if hl then
-        TweenService:Create(hl, TweenInfo.new(0.15, Enum.EasingStyle.Quad), {BackgroundTransparency = 0.4}):Play()
-    end
-
-    if img then
-        img.Size = UDim2.new(1, -10, 1, -10)
-        TweenService:Create(img, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(1, -20, 1, -20)}):Play()
-        task.delay(0.15, function()
-            TweenService:Create(img, TweenInfo.new(0.15, Enum.EasingStyle.Quad), {Size = UDim2.new(1, -10, 1, -10)}):Play()
-        end)
-    end
-
-    selectedEmoteItem = item
-    centerText.Text = item.name or item.Name or "Emote"
-    cartridgeButton.Visible = true
-    LoadTrack(item.id or item.AssetId or item.Id)
-
-    mainContainer.Visible = false
-    return true
-end
-
-for i = 1, TOTAL_SLOTS do
-    local slotAngleDeg = ((i - 1) * SLICE_ANGLE) - 90
-    local slotAngleRad = math.rad(slotAngleDeg)
-    local slotX = radiusTotal + (math.cos(slotAngleRad) * slotLabelRadius)
-    local slotY = radiusTotal + (math.sin(slotAngleRad) * slotLabelRadius)
-
-    local slotButton = Instance.new("TextButton")
-    slotButton.Size = UDim2.fromOffset(55, 55)
-    slotButton.AnchorPoint = Vector2.new(0.5, 0.5)
-    slotButton.Position = UDim2.fromOffset(slotX, slotY)
-    slotButton.BackgroundTransparency = 1
-    slotButton.Text = ""
-    slotButton.ZIndex = 6
-    slotButton.Parent = wheelFrame
-
-    local highlightBg = Instance.new("Frame")
-    highlightBg.Size = UDim2.new(1, 5, 1, 5)
-    highlightBg.AnchorPoint = Vector2.new(0.5, 0.5)
-    highlightBg.Position = UDim2.new(0.5, 0, 0.5, 0)
-    highlightBg.BackgroundColor3 = Color3.fromRGB(120, 120, 120)
-    highlightBg.BackgroundTransparency = 1
-    highlightBg.ZIndex = 5
-    highlightBg.Parent = slotButton
-    Instance.new("UICorner", highlightBg).CornerRadius = UDim.new(1, 0)
-
-    local slotImg = Instance.new("ImageLabel")
-    slotImg.Size = UDim2.new(1, -10, 1, -10)
-    slotImg.Position = UDim2.new(0, 5, 0, 5)
-    slotImg.BackgroundTransparency = 1
-    slotImg.ScaleType = Enum.ScaleType.Fit
-    slotImg.ZIndex = 6
-    slotImg.Parent = slotButton
-
-    local slotText = Instance.new("TextLabel")
-    slotText.Size = UDim2.new(1, 0, 1, 0)
-    slotText.BackgroundTransparency = 1
-    slotText.Text = tostring(i)
-    slotText.TextColor3 = Color3.fromRGB(255, 255, 255)
-    slotText.TextSize = 17
-    slotText.Font = Enum.Font.Arcade
-    slotText.ZIndex = 7
-    slotText.Parent = slotButton
-
-    trackConnection(slotButton.MouseButton1Click:Connect(function()
-        selectSlotIndex(i)
-    end))
-
-    slotButtons[i] = slotButton
-    slotImages[i] = slotImg
-    slotHighlights[i] = highlightBg
-    slotTexts[i] = slotText
-end
-
--- ==========================================
--- HIT-TEST ANGULAR (clique na roda por setor)
--- Complementa o clique individual dos slots:
---   • Funciona mesmo em áreas "mortas" entre botões
---   • Respeita deadzone central
---   • Detecta clique no setor pelo ângulo real
--- ==========================================
-trackConnection(UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.UserInputType ~= Enum.UserInputType.MouseButton1
-        and input.UserInputType ~= Enum.UserInputType.Touch then
-        return
-    end
-
-    if not mainContainer.Visible then return end
-    if saveModal.Visible then return end
-    if sidePanel.Visible then return end
-
-    local absPos = wheelFrame.AbsolutePosition
-    local absSize = wheelFrame.AbsoluteSize
-    local pos = Vector2.new(input.Position.X, input.Position.Y)
-
-    if pos.X < absPos.X or pos.X > absPos.X + absSize.X
-        or pos.Y < absPos.Y or pos.Y > absPos.Y + absSize.Y then
-        return
-    end
-
-    local center = absPos + absSize / 2
-    local dx, dy = pos.X - center.X, pos.Y - center.Y
-    local dist = math.sqrt(dx * dx + dy * dy)
-    local radius = math.min(absSize.X, absSize.Y) * 0.5
-
-    if dist > radius then return end
-
-    local deadzone = radius * 0.2
-    if dist < deadzone then return end
-
-    local angle = math.deg(math.atan2(dy, dx))
-    local corrected = (angle + 90 + (SLICE_ANGLE / 2)) % 360
-    local index = math.floor(corrected / SLICE_ANGLE) + 1
-
-    if index < 1 then index = 1 end
-    if index > TOTAL_SLOTS then index = TOTAL_SLOTS end
-
-    selectSlotIndex(index)
-end))
-
-local function updateWheelSlots()
-    for i = 1, TOTAL_SLOTS do
+--// =================== UPDATE WHEEL SLOTS ===================
+updateWheelSlots = function()
+    for i = 1, SECTOR_COUNT do
         local item = catalogItems[i]
         local img = slotImages[i]
         local txt = slotTexts[i]
-        local hl = slotHighlights[i]
-
-        if hl then
-            TweenService:Create(hl, TweenInfo.new(0.2), {BackgroundTransparency = 1}):Play()
-        end
 
         if item then
             txt.Visible = false
@@ -1139,11 +1184,10 @@ local function updateWheelSlots()
             img.Visible = false
         end
     end
+    renderState()
 end
 
--- ==========================================
--- loadPage HÍBRIDO
--- ==========================================
+--// =================== loadPage ===================
 loadPage = function(targetPage)
     searchToken = searchToken + 1
     local myToken = searchToken
@@ -1176,6 +1220,7 @@ loadPage = function(targetPage)
     currentPage = targetPage
     pageTextBox.Text = tostring(currentPage)
     pageInfoLabel.Text = tostring(totalPages)
+    CenterCounter.Text = tostring(currentPage) .. " / " .. tostring(totalPages)
 
     catalogItems = {}
     local startIdx = (currentPage - 1) * 8 + 1
@@ -1190,7 +1235,6 @@ loadPage = function(targetPage)
         task.spawn(function()
             local apiList = FetchFromAPI(currentKeyword)
             if myToken ~= searchToken then return end
-
             if #apiList > 0 then
                 local merged = mergeNoDupes(filteredEmotes, apiList)
                 filteredEmotes = merged
@@ -1210,6 +1254,7 @@ loadPage = function(targetPage)
                 currentPage = targetPage
                 pageTextBox.Text = tostring(currentPage)
                 pageInfoLabel.Text = tostring(totalPages)
+                CenterCounter.Text = tostring(currentPage) .. " / " .. tostring(totalPages)
 
                 catalogItems = {}
                 local newStart = (currentPage - 1) * 8 + 1
@@ -1224,40 +1269,28 @@ loadPage = function(targetPage)
     end
 end
 
-trackConnection(prevButton.MouseButton1Click:Connect(function()
-    if currentPage > 1 then
-        currentPage = currentPage - 1
-        pageTextBox.Text = tostring(currentPage)
-        loadPage(currentPage)
-    end
-end))
-trackConnection(nextButton.MouseButton1Click:Connect(function()
-    if currentPage < totalPages then
-        currentPage = currentPage + 1
-        pageTextBox.Text = tostring(currentPage)
-        loadPage(currentPage)
-    end
-end))
-trackConnection(pageTextBox.FocusLost:Connect(function()
+--// =================== NAVEGAÇÃO ===================
+prevButton.MouseButton1Click:Connect(function()
+    if currentPage > 1 then loadPage(currentPage - 1) end
+end)
+nextButton.MouseButton1Click:Connect(function()
+    if currentPage < totalPages then loadPage(currentPage + 1) end
+end)
+pageTextBox.FocusLost:Connect(function()
     local num = tonumber(pageTextBox.Text)
     if num then
-        currentPage = math.clamp(num, 1, totalPages)
-        pageTextBox.Text = tostring(currentPage)
-        loadPage(currentPage)
+        loadPage(math.clamp(num, 1, totalPages))
     else
         pageTextBox.Text = tostring(currentPage)
     end
-end))
-trackConnection(searchBox.FocusLost:Connect(function()
+end)
+searchBox.FocusLost:Connect(function()
     currentKeyword = searchBox.Text
     currentPage = 1
-    pageTextBox.Text = tostring(currentPage)
-    loadPage(currentPage)
-end))
+    loadPage(1)
+end)
 
--- ==========================================
--- buildCategoriesMenu (+20%)
--- ==========================================
+--// =================== buildCategoriesMenu ===================
 buildCategoriesMenu = function()
     for _, child in ipairs(sideScrolling:GetChildren()) do
         if child:IsA("TextButton") then child:Destroy() end
@@ -1266,7 +1299,8 @@ buildCategoriesMenu = function()
     local function createCatBtn(name, count, isAll)
         local btn = Instance.new("TextButton")
         btn.Size = UDim2.new(1, 0, 0, 34)
-        btn.BackgroundColor3 = (currentCategory == name) and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(0, 0, 0)
+        btn.BackgroundColor3 = (currentCategory == name) and COLORS.Selected or COLORS.Normal
+        btn.BackgroundTransparency = (currentCategory == name) and 0.05 or 0.15
         btn.AutoButtonColor = false
         btn.Text = ""
         btn.Parent = sideScrolling
@@ -1275,7 +1309,7 @@ buildCategoriesMenu = function()
 
         local stroke = Instance.new("UIStroke", btn)
         stroke.Thickness = (currentCategory == name) and 2 or 1
-        stroke.Color = (currentCategory == name) and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(100, 100, 100)
+        stroke.Color = (currentCategory == name) and COLORS.Text or COLORS.Border
         stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
         local icon = Instance.new("ImageLabel")
@@ -1292,7 +1326,7 @@ buildCategoriesMenu = function()
         label.Position = UDim2.new(0, 34, 0, 2)
         label.BackgroundTransparency = 1
         label.Text = name
-        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.TextColor3 = COLORS.Text
         label.TextSize = 12
         label.Font = Enum.Font.Arcade
         label.TextXAlignment = Enum.TextXAlignment.Left
@@ -1303,7 +1337,7 @@ buildCategoriesMenu = function()
         subtitle.Position = UDim2.new(0, 34, 0, 18)
         subtitle.BackgroundTransparency = 1
         subtitle.Text = isAll and "Todos os Emotes" or ("(" .. tostring(count) .. ")")
-        subtitle.TextColor3 = Color3.fromRGB(150, 150, 150)
+        subtitle.TextColor3 = COLORS.SubText
         subtitle.TextSize = 10
         subtitle.Font = Enum.Font.Arcade
         subtitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -1316,10 +1350,7 @@ buildCategoriesMenu = function()
             pencil.BackgroundTransparency = 1
             pencil.Image = ID_LAPIS
             pencil.Parent = btn
-
-            trackConnection(pencil.MouseButton1Click:Connect(function()
-                promptRenameCategory(name)
-            end))
+            pencil.MouseButton1Click:Connect(function() promptRenameCategory(name) end)
         end
 
         local arrow = Instance.new("TextLabel")
@@ -1327,20 +1358,18 @@ buildCategoriesMenu = function()
         arrow.Position = UDim2.new(1, -22, 0, 0)
         arrow.BackgroundTransparency = 1
         arrow.Text = ">"
-        arrow.TextColor3 = Color3.fromRGB(255, 255, 255)
+        arrow.TextColor3 = COLORS.Text
         arrow.TextSize = 13
         arrow.Font = Enum.Font.Arcade
         arrow.Parent = btn
 
-        trackConnection(btn.MouseButton1Click:Connect(function()
-            if currentCategory == name and not isAll then
-                return
-            end
+        btn.MouseButton1Click:Connect(function()
+            if currentCategory == name and not isAll then return end
             currentCategory = name
             currentPage = 1
             loadPage(currentPage)
             buildCategoriesMenu()
-        end))
+        end)
     end
 
     createCatBtn("All", #allEmotes, true)
@@ -1349,15 +1378,22 @@ buildCategoriesMenu = function()
     end
 end
 
+--// =================== TOGGLE (RightShift) ===================
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.RightShift then
+        mainContainer.Visible = not mainContainer.Visible
+        if not mainContainer.Visible then
+            hoveredIndex = nil
+            renderState()
+        end
+    end
+end)
+
+--// =================== INIT ===================
+renderState()
 buildCategoriesMenu()
 loadPage(1)
 
--- =================== CLEANUP ===================
--- Executa disconnectAll quando a ScreenGui for destruída ou o script recarregado
-trackConnection(screenGui.AncestryChanged:Connect(function(_, parent)
-    if not parent then
-        disconnectAll()
-    end
-end))
-
-print("✅ Script híbrido carregado. Emotes no DB:", #allEmotes)
+print("✅ [7yd7-Radial] Carregado. Emotes no DB:", #allEmotes)
+print("   RightShift: mostrar/ocultar | + (botão externo): abrir/fechar")
