@@ -1,6 +1,7 @@
 --[[
     Script: 7yd7 | Roda Radial de Emotes - VISUAL FINAL EXATO + MELHORIAS
-    - Comportamento de sobreposição idêntico ao 7yd7 original
+    - Forçando a prioridade mínima (Idle) para NÃO sobrepor emotes nativos
+    - Os emotes nativos do jogo sempre tocarão por cima, sem misturar o esqueleto
     - Ao mover ou pular, todos os emotes param e voltam ao estado natural
     - Design preto e branco (Arcade) com divisórias brancas
     - Modal Salvar movido para a direita
@@ -187,7 +188,7 @@ local searchToken = 0
 
 local updateWheelSlots, loadPage, buildCategoriesMenu, openSaveModal
 
---// TRACK (Comportamento do 7yd7 - Sem forçar prioridade, mistura natural)
+--// TRACK (Forçando Prioridade Mínima - Idle)
 local function LoadTrack(id)
     local char = LocalPlayer.Character
     if not char then return end
@@ -221,8 +222,11 @@ local function LoadTrack(id)
             anim.AnimationId = animId
             local track = animator:LoadAnimation(anim)
             
-            -- IMPORTANTE: Nenhuma definição de Priority ou Weight.
-            -- Deixamos o Roblox usar o padrão (Core) para permitir a mesclagem natural igual ao 7yd7.
+            -- AQUI ESTÁ A MÁGICA:
+            -- Colocamos em Idle (Prioridade 1) para que os emotes nativos dos jogos
+            -- (que geralmente usam Action - Prioridade 3) toquem POR CIMA, 
+            -- sem quebrar os ossos (sem o efeito híbrido).
+            track.Priority = Enum.AnimationPriority.Idle 
             track.Looped = true
             track:Play(0.1, 1, Settings.Speed)
             
@@ -1266,4 +1270,4 @@ buildCategoriesMenu()
 loadPage(1)
 renderRadialState()
 
-print("✅ [7yd7] Script atualizado com o comportamento idêntico ao 7yd7 (sem forçar Priority/Weight).")
+print("✅ [7yd7] Script atualizado com Prioridade Idle (Mínima) para evitar sobreposição híbrida!")
