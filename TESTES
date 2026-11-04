@@ -1,3 +1,15 @@
+--[[
+    Script: 7yd7 | Roda Radial de Emotes - VISUAL FINAL EXATO + MELHORIAS
+    - Comportamento de sobreposição idêntico ao 7yd7 original
+    - Ao mover ou pular, todos os emotes param e voltam ao estado natural
+    - Design preto e branco (Arcade) com divisórias brancas
+    - Modal Salvar movido para a direita
+    - Categorias e Favoritos (Estrela) salvos em JSON
+    - Botão Externo no topo central, 15% menor, esconde ao abrir
+    - Ordem de Categoria preservada por fatia
+    - Sistema de Notificação (Toast) ao salvar emote
+]]
+
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -21,6 +33,7 @@ end)
 
 local Settings = { Speed = 1, StopOnMove = true }
 
+--// ASSETS
 local ID_CARTUCHO_SEMBORDA = "rbxassetid://96618641654782"
 local ID_BTN_DOCUMENTO = "rbxassetid://76204370315940"
 local ID_BTN_EXTERNO = "rbxassetid://115103675836200"
@@ -36,6 +49,7 @@ local ID_ESTRELA = "rbxassetid://77340475678237"
 
 local MARGIN = 14
 
+--// PERSISTÊNCIA
 local FOLDER = "7yd7"
 local EMOTE_CACHE_FILE = FOLDER .. "/EmoteListCache.json"
 local CATEGORIES_FILE = FOLDER .. "/Categories.json"
@@ -160,6 +174,7 @@ end
 
 RebuildIndex()
 
+--// STATE
 local ActiveTracks = {} 
 local currentCategory = "All"
 local currentPage = 1
@@ -172,6 +187,7 @@ local searchToken = 0
 
 local updateWheelSlots, loadPage, buildCategoriesMenu, openSaveModal
 
+--// TRACK (Comportamento do 7yd7 - Sem forçar prioridade, mistura natural)
 local function LoadTrack(id)
     local char = LocalPlayer.Character
     if not char then return end
@@ -185,7 +201,7 @@ local function LoadTrack(id)
         local animator = hum:FindFirstChildOfClass("Animator")
         if animator then
             
-            -- Limita a 6 animações simultâneas para não bugar o Roblox
+            -- Limita a 6 animações simultâneas para não crashar o Roblox
             if #ActiveTracks >= 6 then
                 local oldestTrack = table.remove(ActiveTracks, 1)
                 if oldestTrack and oldestTrack.IsPlaying then
@@ -205,17 +221,17 @@ local function LoadTrack(id)
             anim.AnimationId = animId
             local track = animator:LoadAnimation(anim)
             
-            track.Priority = Enum.AnimationPriority.Action
+            -- IMPORTANTE: Nenhuma definição de Priority ou Weight.
+            -- Deixamos o Roblox usar o padrão (Core) para permitir a mesclagem natural igual ao 7yd7.
             track.Looped = true
-            
             track:Play(0.1, 1, Settings.Speed)
-            track:AdjustWeight(1, 0)
             
             table.insert(ActiveTracks, track)
         end
     end)
 end
 
+--// CONTROLE DE MOVIMENTO (Parar todos ao andar/pular)
 RunService.RenderStepped:Connect(function()
     if character and character:FindFirstChild("HumanoidRootPart") then
         local root = character.HumanoidRootPart
@@ -235,6 +251,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
+--// PARENT GUI
 local success, parentTarget = pcall(function()
     if gethui then return gethui()
     elseif syn and syn.protect_gui then
@@ -249,6 +266,7 @@ screenGui.ResetOnSpawn = false
 screenGui.IgnoreGuiInset = true
 screenGui.Parent = parentTarget
 
+--// BOTÃO EXTERNO
 local toggleButton = Instance.new("ImageButton")
 toggleButton.Size = UDim2.new(0, 45, 0, 45) 
 toggleButton.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -285,6 +303,7 @@ toggleButton.MouseButton1Click:Connect(function()
     toggleButton.Visible = false
 end)
 
+--// RODA RADIAL
 local WHEEL_SIZE = 276
 local wheelFrame = Instance.new("Frame")
 wheelFrame.Size = UDim2.fromOffset(WHEEL_SIZE, WHEEL_SIZE)
@@ -293,6 +312,7 @@ wheelFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 wheelFrame.BackgroundTransparency = 1
 wheelFrame.Parent = mainContainer
 
+--// BARRA SUPERIOR
 local topBar = Instance.new("Frame")
 topBar.Size = UDim2.fromOffset(372, 38)
 topBar.AnchorPoint = Vector2.new(0.5, 1)
@@ -343,6 +363,7 @@ cartridgeButton.Visible = false
 cartridgeButton.Parent = topBar
 cartridgeButton.MouseButton1Click:Connect(function() if selectedEmoteItem then openSaveModal() end end)
 
+--// BARRA INFERIOR
 local navContainer = Instance.new("Frame")
 navContainer.Size = UDim2.fromOffset(240, 34)
 navContainer.AnchorPoint = Vector2.new(0.5, 0)
@@ -410,6 +431,7 @@ nextButton.Image = ID_SETA_DIREITA
 nextButton.LayoutOrder = 5
 nextButton.Parent = navContainer
 
+--// PAINEL LATERAL
 local sidePanel = Instance.new("Frame")
 sidePanel.Size = UDim2.fromOffset(180, 276)
 sidePanel.AnchorPoint = Vector2.new(1, 0.5)
@@ -553,6 +575,7 @@ removeCatGlobalBtn.MouseButton1Click:Connect(function()
     buildCategoriesMenu(); loadPage(1)
 end)
 
+--// SISTEMA DE NOTIFICAÇÃO (TOAST)
 local function ShowToast(catName)
     local existing = screenGui:FindFirstChild("ToastNotification")
     if existing then existing:Destroy() end
@@ -740,6 +763,7 @@ saveConfirmBtn.MouseButton1Click:Connect(function()
     end
 end)
 
+--// SISTEMA VISUAL RADIAL
 local outerCircle = Instance.new("Frame")
 outerCircle.Size = UDim2.new(1, 0, 1, 0)
 outerCircle.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
@@ -1241,3 +1265,5 @@ end
 buildCategoriesMenu()
 loadPage(1)
 renderRadialState()
+
+print("✅ [7yd7] Script atualizado com o comportamento idêntico ao 7yd7 (sem forçar Priority/Weight).")
