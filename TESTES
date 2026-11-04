@@ -1,10 +1,10 @@
 --[[
-    Script: 7yd7 | Roda Radial de Emotes - VISUAL FINAL EXATO
+    Script: 7yd7 | Roda Radial de Emotes - VISUAL FINAL EXATO + MELHORIAS
     - Design preto e branco (Arcade) com divisórias brancas
-    - Sistema Radial funcional (detecção por ângulo e distância)
-    - Highlight de setor: Cinza (rgb 128, 128, 128) atrás do ícone
-    - Ícone do emote sempre acima do highlight
-    - Busca híbrida, categorias, paginação, save modal e play de emote
+    - Sistema Radial funcional com reset ao trocar de página
+    - Modal Salvar movido para a direita
+    - Categorias e Favoritos (Estrela) salvos em JSON persistente
+    - Favoritos aparecem no topo da lista
 ]]
 
 local Players = game:GetService("Players")
@@ -29,7 +29,7 @@ end)
 
 local Settings = { Speed = 1, StopOnMove = true }
 
---// ASSETS (Mantidos os originais)
+--// ASSETS
 local ID_CARTUCHO_SEMBORDA = "rbxassetid://96618641654782"
 local ID_BTN_DOCUMENTO = "rbxassetid://76204370315940"
 local ID_BTN_EXTERNO = "rbxassetid://115103675836200"
@@ -41,12 +41,16 @@ local ID_FECHAR_X = "rbxassetid://78774633521849"
 local ID_LAPIS = "rbxassetid://105157650009654"
 local ID_SETA_ESQUERDA = "rbxassetid://112363067871003"
 local ID_SETA_DIREITA = "rbxassetid://138794689086376"
+-- ID da Estrela (você pode trocar por um asset seu depois)
+local ID_ESTRELA = "rbxassetid://77340475678237" 
 
 local MARGIN = 14
 
---// PERSISTÊNCIA E BANCO DE DADOS
+--// PERSISTÊNCIA
 local FOLDER = "7yd7"
 local EMOTE_CACHE_FILE = FOLDER .. "/EmoteListCache.json"
+local CATEGORIES_FILE = FOLDER .. "/Categories.json"
+local STARRED_FILE = FOLDER .. "/Starred.json"
 local GITHUB_URL = "https://raw.githubusercontent.com/7yd7/sniper-Emote/refs/heads/test/EmoteSniper.json"
 local DEFAULT_TOTAL_PAGES = 7415
 
@@ -55,36 +59,56 @@ local function ensureFolder()
 end
 
 local allEmotes, filteredEmotes, emoteIndexById = {}, {}, {}
+local emoteData = { categories = {} }
+local starredEmotes = {} -- Array de IDs na ordem em que foram salvos
 
-local function LoadEmoteCache()
+-- Funções JSON
+local function LoadJSON(fileName, fallback)
     ensureFolder()
-    if isfile and isfile(EMOTE_CACHE_FILE) then
-        local ok, decoded = pcall(function() return HttpService:JSONDecode(readfile(EMOTE_CACHE_FILE)) end)
-        if ok and type(decoded) == "table" and #decoded > 0 then return decoded end
+    if isfile and isfile(fileName) then
+        local ok, decoded = pcall(function() return HttpService:JSONDecode(readfile(fileName)) end)
+        if ok and type(decoded) == "table" then return decoded end
     end
-    return nil
+    return fallback
 end
 
-local function SaveEmoteCache()
+local function SaveJSON(fileName, data)
     ensureFolder()
-    if writefile then pcall(function() writefile(EMOTE_CACHE_FILE, HttpService:JSONEncode(allEmotes)) end) end
+    if writefile then pcall(function() writefile(fileName, HttpService:JSONEncode(data)) end) end
 end
 
-local function FetchFromGitHub()
-    local ok, result = pcall(function()
-        local json = game:HttpGet(GITHUB_URL)
-        if json and json ~= "" then return HttpService:JSONDecode(json) end
-        return nil
-    end)
-    if ok and result and result.data then
-        local out = {}
-        for _, item in ipairs(result.data) do
+-- Load Inicial
+local cached = LoadJSON(EMOTE_CACHE_FILE, nil)
+if cached and #cached > 0 then
+    allEmotes = cached
+else
+    local g = pcall(function() return HttpService:JSONDecode(game:HttpGet(GITHUB_URL)).data end)
+    if g and type(g) == "table" then
+        for _, item in ipairs(g) do
             local id = tonumber(item.id)
-            if id and id > 0 then table.insert(out, {id = id, name = item.name or ("Emote_" .. id)}) end
+            if id and id > 0 then table.insert(allEmotes, {id = id, name = item.name or ("Emote_" .. id)}) end
         end
-        if #out > 0 then return out end
     end
-    return nil
+    if #allEmotes == 0 then
+        local apiList = FetchFromAPI("") -- fallback se GITHUB falhar
+        if apiList then allEmotes = apiList end
+    end
+    if #allEmotes > 0 then SaveJSON(EMOTE_CACHE_FILE, allEmotes) end
+end
+
+local loadedCategories = LoadJSON(CATEGORIES_FILE, { categories = {} })
+if loadedCategories and loadedCategories.categories then
+    emoteData.categories = loadedCategories.categories
+end
+
+local loadedStarred = LoadJSON(STARRED_FILE, {})
+if loadedStarred and type(loadedStarred) == "table" then
+    starredEmotes = loadedStarred
+end
+
+local function RebuildIndex()
+    emoteIndexById = {}
+    for _, e in ipairs(allEmotes) do emoteIndexById[tostring(e.id)] = e end
 end
 
 local function FetchFromAPI(keyword)
@@ -109,11 +133,6 @@ local function FetchFromAPI(keyword)
     return out
 end
 
-local function RebuildIndex()
-    emoteIndexById = {}
-    for _, e in ipairs(allEmotes) do emoteIndexById[tostring(e.id)] = e end
-end
-
 local function smartSearchMatch(name, term)
     if not term or term == "" then return true end
     name = tostring(name):lower()
@@ -126,55 +145,50 @@ end
 
 local function applySearchLocal(term)
     term = tostring(term or ""):lower()
-    if term == "" then filteredEmotes = allEmotes; return #filteredEmotes end
-    local isId = term:match("^%d+$")
-    if isId then
-        local item = emoteIndexById[term]
-        if item then filteredEmotes = {item}; return 1 end
-        filteredEmotes = {}
-        return 0
-    end
+    
+    -- Monta a lista baseada na busca
     local out = {}
-    for _, e in ipairs(allEmotes) do
-        if smartSearchMatch(e.name, term) then table.insert(out, e) end
+    if term == "" then
+        out = allEmotes
+    else
+        local isId = term:match("^%d+$")
+        if isId then
+            local item = emoteIndexById[term]
+            if item then out = {item} else out = {} end
+        else
+            for _, e in ipairs(allEmotes) do
+                if smartSearchMatch(e.name, term) then table.insert(out, e) end
+            end
+        end
     end
-    filteredEmotes = out
-    return #out
+
+    -- Aplica ordenação: Favoritos primeiro na ordem em que foram marcados
+    local starredSet = {}
+    for i, id in ipairs(starredEmotes) do starredSet[tostring(id)] = i end
+    
+    local starredList, normalList = {}, {}
+    for _, e in ipairs(out) do
+        if starredSet[tostring(e.id)] then
+            table.insert(starredList, e)
+        else
+            table.insert(normalList, e)
+        end
+    end
+    
+    table.sort(starredList, function(a, b)
+        return (starredSet[tostring(a.id)] or 9999) < (starredSet[tostring(b.id)] or 9999)
+    end)
+
+    filteredEmotes = {}
+    for _, e in ipairs(starredList) do table.insert(filteredEmotes, e) end
+    for _, e in ipairs(normalList) do table.insert(filteredEmotes, e) end
+    
+    return #filteredEmotes
 end
 
-local function mergeNoDupes(listA, listB)
-    local seen, out = {}, {}
-    for _, e in ipairs(listA) do local k = tostring(e.id); if not seen[k] then seen[k] = true; table.insert(out, e) end end
-    for _, e in ipairs(listB) do local k = tostring(e.id); if not seen[k] then seen[k] = true; table.insert(out, e) end end
-    return out
-end
-
-local function getEmoteName(id)
-    local ok, info = pcall(function() return MarketplaceService:GetProductInfo(tonumber(id)) end)
-    if ok and info and info.Name then return info.Name end
-    return "Emote_" .. tostring(id)
-end
-
--- Carregamento inicial
-local loaded = false
-local cached = LoadEmoteCache()
-if cached then allEmotes = cached; RebuildIndex(); loaded = true end
-if not loaded then
-    local g = FetchFromGitHub()
-    if g then allEmotes = g; RebuildIndex(); SaveEmoteCache(); loaded = true end
-end
-if not loaded then
-    local a = FetchFromAPI("")
-    if a and #a > 0 then allEmotes = a; RebuildIndex(); SaveEmoteCache(); loaded = true end
-end
-if not loaded then
-    allEmotes = {{id = 3360686498, name = "Stadium"}, {id = 3360692915, name = "Tilt"}}
-    RebuildIndex()
-end
-filteredEmotes = allEmotes
+RebuildIndex()
 
 --// STATE
-local emoteData = { categories = {} }
 local CurrentTrack = nil
 local currentCategory = "All"
 local currentPage = 1
@@ -182,7 +196,7 @@ local totalPages = DEFAULT_TOTAL_PAGES
 local currentKeyword = ""
 local selectedEmoteItem = nil
 local catalogItems = {}
-local slotButtons, slotImages, slotHighlights, slotTexts = {}, {}, {}, {}
+local slotButtons, slotImages, slotHighlights, slotTexts, slotStars = {}, {}, {}, {}, {}
 local searchToken = 0
 
 local updateWheelSlots, loadPage, buildCategoriesMenu, openSaveModal
@@ -249,9 +263,7 @@ local dragging, dragInput, dragStart, startPos
 toggleButton.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true; dragStart = input.Position; startPos = toggleButton.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then dragging = false end
-        end)
+        input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end)
     end
 end)
 toggleButton.InputChanged:Connect(function(input)
@@ -269,7 +281,6 @@ mainContainer.Size = UDim2.new(1, 0, 1, 0)
 mainContainer.BackgroundTransparency = 1
 mainContainer.Visible = true
 mainContainer.Parent = screenGui
-
 toggleButton.MouseButton1Click:Connect(function() mainContainer.Visible = not mainContainer.Visible end)
 
 --// RODA RADIAL
@@ -330,7 +341,6 @@ cartridgeButton.BackgroundTransparency = 1
 cartridgeButton.Image = ID_CARTUCHO_SEMBORDA
 cartridgeButton.Visible = false
 cartridgeButton.Parent = topBar
-
 cartridgeButton.MouseButton1Click:Connect(function() if selectedEmoteItem then openSaveModal() end end)
 
 --// BARRA INFERIOR
@@ -401,7 +411,7 @@ nextButton.Image = ID_SETA_DIREITA
 nextButton.LayoutOrder = 5
 nextButton.Parent = navContainer
 
---// PAINEL LATERAL / MODAL / FUNÇÕES UI (Mantidos intactos)
+--// PAINEL LATERAL
 local sidePanel = Instance.new("Frame")
 sidePanel.Size = UDim2.fromOffset(180, 276)
 sidePanel.AnchorPoint = Vector2.new(1, 0.5)
@@ -471,43 +481,25 @@ local function createFooterButton(text, iconId, order, extraSymbol)
     btn.Size = UDim2.new(1, 0, 0, 34)
     btn.Position = UDim2.new(0, 0, 0, (order - 1) * 38)
     btn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    btn.AutoButtonColor = false
-    btn.Text = ""
-    btn.Parent = sideFooter
+    btn.AutoButtonColor = false; btn.Text = ""; btn.Parent = sideFooter
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 5)
     local stroke = Instance.new("UIStroke", btn)
-    stroke.Color = Color3.fromRGB(255, 255, 255)
-    stroke.Thickness = 1
-    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.Color = Color3.fromRGB(255, 255, 255); stroke.Thickness = 1; stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     local icon = Instance.new("ImageLabel")
-    icon.Size = UDim2.fromOffset(17, 17)
-    icon.Position = UDim2.new(0, 10, 0.5, -8)
-    icon.BackgroundTransparency = 1
-    icon.Image = iconId
-    icon.Parent = btn
+    icon.Size = UDim2.fromOffset(17, 17); icon.Position = UDim2.new(0, 10, 0.5, -8)
+    icon.BackgroundTransparency = 1; icon.Image = iconId; icon.Parent = btn
 
     local txt = Instance.new("TextLabel")
-    txt.Size = UDim2.new(1, -36, 1, 0)
-    txt.Position = UDim2.new(0, 31, 0, 0)
-    txt.BackgroundTransparency = 1
-    txt.Text = text
-    txt.TextColor3 = Color3.fromRGB(255, 255, 255)
-    txt.TextSize = 11
-    txt.Font = Enum.Font.Arcade
-    txt.TextXAlignment = Enum.TextXAlignment.Left
-    txt.Parent = btn
+    txt.Size = UDim2.new(1, -36, 1, 0); txt.Position = UDim2.new(0, 31, 0, 0)
+    txt.BackgroundTransparency = 1; txt.Text = text; txt.TextColor3 = Color3.fromRGB(255, 255, 255)
+    txt.TextSize = 11; txt.Font = Enum.Font.Arcade; txt.TextXAlignment = Enum.TextXAlignment.Left; txt.Parent = btn
 
     if extraSymbol then
         local symbol = Instance.new("TextLabel")
-        symbol.Size = UDim2.new(0, 14, 1, 0)
-        symbol.Position = UDim2.new(1, -19, 0, 0)
-        symbol.BackgroundTransparency = 1
-        symbol.Text = extraSymbol
-        symbol.TextColor3 = Color3.fromRGB(255, 255, 255)
-        symbol.TextSize = 12
-        symbol.Font = Enum.Font.Arcade
-        symbol.Parent = btn
+        symbol.Size = UDim2.new(0, 14, 1, 0); symbol.Position = UDim2.new(1, -19, 0, 0)
+        symbol.BackgroundTransparency = 1; symbol.Text = extraSymbol; symbol.TextColor3 = Color3.fromRGB(255, 255, 255)
+        symbol.TextSize = 12; symbol.Font = Enum.Font.Arcade; symbol.Parent = btn
     end
     return btn
 end
@@ -541,6 +533,7 @@ local function promptRenameCategory(oldName)
             local newName = textBox.Text
             for _, cat in ipairs(emoteData.categories) do if cat.name == oldName then cat.name = newName break end end
             if currentCategory == oldName then currentCategory = newName end
+            SaveJSON(CATEGORIES_FILE, emoteData)
         end
         textBox:Destroy(); buildCategoriesMenu()
     end
@@ -549,6 +542,7 @@ end
 
 createCatGlobalBtn.MouseButton1Click:Connect(function()
     table.insert(emoteData.categories, { name = "Nova Cat " .. (#emoteData.categories + 1), emotes = {} })
+    SaveJSON(CATEGORIES_FILE, emoteData)
     buildCategoriesMenu()
 end)
 
@@ -557,13 +551,16 @@ removeCatGlobalBtn.MouseButton1Click:Connect(function()
     for i, cat in ipairs(emoteData.categories) do
         if cat.name == currentCategory then table.remove(emoteData.categories, i); currentCategory = "All"; break end
     end
+    SaveJSON(CATEGORIES_FILE, emoteData)
     buildCategoriesMenu(); loadPage(1)
 end)
 
+--// MODAL SALVAR (Deslocado para a Direita)
 local saveModal = Instance.new("Frame")
 saveModal.Size = UDim2.fromOffset(336, 240)
 saveModal.AnchorPoint = Vector2.new(0.5, 0.5)
-saveModal.Position = UDim2.new(0.5, 0, 0.5, 0)
+-- Deslocado +160 em X para não sobrepor o painel lateral de categorias
+saveModal.Position = UDim2.new(0.5, 160, 0.5, 0) 
 saveModal.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 saveModal.Visible = false; saveModal.ZIndex = 10; saveModal.Parent = mainContainer
 Instance.new("UICorner", saveModal).CornerRadius = UDim.new(0, 10)
@@ -674,7 +671,7 @@ saveConfirmText.ZIndex = 12; saveConfirmText.Parent = saveConfirmBtn
 saveConfirmBtn.MouseButton1Click:Connect(function()
     if selectedEmoteItem and targetCategoryToSave then
         local id = tostring(selectedEmoteItem.AssetId or selectedEmoteItem.Id or selectedEmoteItem.id)
-        local name = selectedEmoteItem.Name or selectedEmoteItem.name or getEmoteName(id)
+        local name = selectedEmoteItem.Name or selectedEmoteItem.name or ("Emote_"..id)
         for _, cat in ipairs(emoteData.categories) do
             if cat.name == targetCategoryToSave then
                 local exists = false
@@ -686,15 +683,13 @@ saveConfirmBtn.MouseButton1Click:Connect(function()
                 break
             end
         end
+        SaveJSON(CATEGORIES_FILE, emoteData) -- Salva as categorias ao confirmar
         saveModal.Visible = false; buildCategoriesMenu()
         if currentCategory == targetCategoryToSave then loadPage(1) end
     end
 end)
 
---// =====================================================================
---// CONSTRUÇÃO VISUAL DA RODA + SISTEMA RADIAL
---// =====================================================================
-
+--// SISTEMA VISUAL RADIAL
 local outerCircle = Instance.new("Frame")
 outerCircle.Size = UDim2.new(1, 0, 1, 0)
 outerCircle.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
@@ -737,7 +732,6 @@ local slotLabelRadius = (innerRadius + outerRadius) / 2
 local TOTAL_SLOTS = 8
 local SLICE_ANGLE = 360 / TOTAL_SLOTS
 
---// DIVISORES DA RODA (Fundo Branco)
 for i = 1, TOTAL_SLOTS do
     local dividerAngleDeg = -90 + ((i - 1) * SLICE_ANGLE) - (SLICE_ANGLE / 2)
     local dividerAngleRad = math.rad(dividerAngleDeg)
@@ -762,11 +756,10 @@ for i = 1, TOTAL_SLOTS do
     line.Parent = wheelFrame
 end
 
---// FATIAS (HIGHLIGHT CINZA) - Ficam atrás dos ícones, sobre o fundo preto (ZIndex 2)
 local HOVER_COLOR = Color3.fromRGB(120, 120, 120)
 local HOVER_TRANSPARENCY = 0.2
 local SELECT_COLOR = Color3.fromRGB(120, 120, 120)
-local SELECT_TRANSPARENCY = 0.2 -- Cor cinza fixa para o "selecionado"
+local SELECT_TRANSPARENCY = 0.2
 
 local sectorSlices = {}
 for i = 1, TOTAL_SLOTS do sectorSlices[i] = {} end
@@ -785,7 +778,6 @@ for rowOffset = 0, (radiusTotal * 2) - 1, SLICE_STEP do
     for colOffset = 0, (radiusTotal * 2) - 1 do
         local xPix = colOffset - radiusTotal
         local dist = math.sqrt(xPix * xPix + yPix * yPix)
-
         local sector = nil
         if dist >= innerRadius and dist <= outerRadius then
             local angleDeg = math.deg(math.atan2(yPix, xPix))
@@ -795,28 +787,21 @@ for rowOffset = 0, (radiusTotal * 2) - 1, SLICE_STEP do
         if sector ~= currentSector then
             if currentSector then
                 local frame = Instance.new("Frame")
-                frame.BorderSizePixel = 0
-                frame.BackgroundColor3 = HOVER_COLOR
-                frame.BackgroundTransparency = 1 -- Invisível por padrão
+                frame.BorderSizePixel = 0; frame.BackgroundColor3 = HOVER_COLOR; frame.BackgroundTransparency = 1
                 frame.Position = UDim2.fromOffset(startX, rowOffset)
                 frame.Size = UDim2.fromOffset((colOffset - startX) + 0.5, SLICE_STEP + 0.5)
-                frame.ZIndex = 2 -- Acima do preto, abaixo do ícone
-                frame.Parent = wheelFrame
+                frame.ZIndex = 2; frame.Parent = wheelFrame
                 table.insert(sectorSlices[currentSector], frame)
             end
-            currentSector = sector
-            startX = colOffset
+            currentSector = sector; startX = colOffset
         end
     end
     if currentSector then
         local frame = Instance.new("Frame")
-        frame.BorderSizePixel = 0
-        frame.BackgroundColor3 = HOVER_COLOR
-        frame.BackgroundTransparency = 1
+        frame.BorderSizePixel = 0; frame.BackgroundColor3 = HOVER_COLOR; frame.BackgroundTransparency = 1
         frame.Position = UDim2.fromOffset(startX, rowOffset)
         frame.Size = UDim2.fromOffset(((radiusTotal * 2) - startX) + 0.5, SLICE_STEP + 0.5)
-        frame.ZIndex = 2
-        frame.Parent = wheelFrame
+        frame.ZIndex = 2; frame.Parent = wheelFrame
         table.insert(sectorSlices[currentSector], frame)
     end
 end
@@ -848,28 +833,21 @@ local function renderRadialState()
     if lastSelected then changed[lastSelected] = true end
     if hoveredIndex then changed[hoveredIndex] = true end
     if selectedIndex then changed[selectedIndex] = true end
-
     for i in pairs(changed) do applySectorVisual(i) end
-    lastHovered = hoveredIndex
-    lastSelected = selectedIndex
+    lastHovered = hoveredIndex; lastSelected = selectedIndex
 end
 
 local function getSectorFromPosition(position)
     if not wheelFrame or not wheelFrame.Visible then return nil end
-    local abs = wheelFrame.AbsolutePosition
-    local size = wheelFrame.AbsoluteSize
+    local abs = wheelFrame.AbsolutePosition; local size = wheelFrame.AbsoluteSize
     local center = Vector2.new(abs.X + size.X / 2, abs.Y + size.Y / 2)
-    local dx = position.X - center.X
-    local dy = position.Y - center.Y
+    local dx = position.X - center.X; local dy = position.Y - center.Y
     local dist = math.sqrt(dx * dx + dy * dy)
-
     if dist < innerRadius - 2 or dist > outerRadius + 2 then return nil end
-
-    local angleDeg = math.deg(math.atan2(dy, dx))
-    return angleToSector(angleDeg)
+    return angleToSector(math.deg(math.atan2(dy, dx)))
 end
 
---// CRIAÇÃO DOS SLOTS (Botões + Ícones)
+--// SLOTS (Botões, Ícones e Estrelas)
 for i = 1, TOTAL_SLOTS do
     local slotAngleDeg = ((i - 1) * SLICE_ANGLE) - 90
     local slotAngleRad = math.rad(slotAngleDeg)
@@ -882,12 +860,11 @@ for i = 1, TOTAL_SLOTS do
     slotButton.Position = UDim2.fromOffset(slotX, slotY)
     slotButton.BackgroundTransparency = 1
     slotButton.Text = ""
-    slotButton.ZIndex = 6 -- Ícone acima do gradiente cinza
+    slotButton.ZIndex = 6
     slotButton.Parent = wheelFrame
 
-    -- Imagem do Emote
     local slotImg = Instance.new("ImageLabel")
-    slotImg.Size = UDim2.new(0.8, 0, 0.8, 0) -- Um pouco menor que o botão
+    slotImg.Size = UDim2.new(0.8, 0, 0.8, 0)
     slotImg.AnchorPoint = Vector2.new(0.5, 0.5)
     slotImg.Position = UDim2.new(0.5, 0, 0.5, 0)
     slotImg.BackgroundTransparency = 1
@@ -895,23 +872,53 @@ for i = 1, TOTAL_SLOTS do
     slotImg.ZIndex = 6
     slotImg.Parent = slotButton
 
-    -- Texto do Número (Apenas se não houver emote)
     local slotText = Instance.new("TextLabel")
     slotText.Size = UDim2.new(1, 0, 1, 0)
-    slotText.BackgroundTransparency = 1
-    slotText.Text = tostring(i)
-    slotText.TextColor3 = Color3.fromRGB(255, 255, 255)
-    slotText.TextSize = 18
-    slotText.Font = Enum.Font.Arcade
-    slotText.ZIndex = 6
-    slotText.Parent = slotButton
+    slotText.BackgroundTransparency = 1; slotText.Text = tostring(i)
+    slotText.TextColor3 = Color3.fromRGB(255, 255, 255); slotText.TextSize = 18
+    slotText.Font = Enum.Font.Arcade; slotText.ZIndex = 6; slotText.Parent = slotButton
 
-    -- Eventos
+    -- NOVO: Botão Estrela (Salvar Favorito)
+    local starBtn = Instance.new("ImageButton")
+    starBtn.Size = UDim2.fromOffset(20, 20)
+    starBtn.AnchorPoint = Vector2.new(1, 1)
+    starBtn.Position = UDim2.new(1, 4, 1, 4) -- Fica no canto inferior direito do ícone do emote
+    starBtn.BackgroundTransparency = 1
+    starBtn.Image = ID_ESTRELA
+    starBtn.ImageColor3 = Color3.fromRGB(150, 150, 150) -- Cinza apagado por padrão
+    starBtn.Visible = false
+    starBtn.ZIndex = 7
+    starBtn.Parent = slotButton
+
+    starBtn.MouseButton1Click:Connect(function()
+        local item = catalogItems[i]
+        if not item then return end
+        local idStr = tostring(item.id or item.AssetId or item.Id)
+        
+        -- Verifica se já está estrelado
+        local foundIdx = nil
+        for idx, sId in ipairs(starredEmotes) do
+            if tostring(sId) == idStr then foundIdx = idx; break end
+        end
+
+        if foundIdx then
+            -- Remove
+            table.remove(starredEmotes, foundIdx)
+            starBtn.ImageColor3 = Color3.fromRGB(150, 150, 150) -- Apaga cor
+        else
+            -- Adiciona no fim (ordem de clique)
+            table.insert(starredEmotes, idStr)
+            starBtn.ImageColor3 = Color3.fromRGB(255, 255, 255) -- Acende cor
+        end
+        SaveJSON(STARRED_FILE, starredEmotes) -- Persiste
+        applySearchLocal(currentKeyword) -- Recalcula para reordenar
+        updateWheelSlots()
+    end)
+
     slotButton.MouseButton1Click:Connect(function()
         local item = catalogItems[i]
         if item then
-            selectedIndex = i
-            renderRadialState()
+            selectedIndex = i; renderRadialState()
             selectedEmoteItem = item
             centerText.Text = item.name or item.Name or "Emote"
             cartridgeButton.Visible = true
@@ -920,32 +927,23 @@ for i = 1, TOTAL_SLOTS do
         end
     end)
 
-    slotButton.MouseEnter:Connect(function()
-        hoveredIndex = i
-        renderRadialState()
-    end)
-    slotButton.MouseLeave:Connect(function()
-        if hoveredIndex == i then hoveredIndex = nil; renderRadialState() end
-    end)
+    slotButton.MouseEnter:Connect(function() hoveredIndex = i; renderRadialState() end)
+    slotButton.MouseLeave:Connect(function() if hoveredIndex == i then hoveredIndex = nil; renderRadialState() end end)
 
     slotButtons[i] = slotButton
     slotImages[i] = slotImg
     slotTexts[i] = slotText
+    slotStars[i] = starBtn
 end
 
---// HOVER POR SETOR LIVRE
 UserInputService.InputChanged:Connect(function(input)
     if not mainContainer.Visible then return end
     if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
         local idx = getSectorFromPosition(Vector2.new(input.Position.X, input.Position.Y))
-        if idx ~= hoveredIndex then
-            hoveredIndex = idx
-            renderRadialState()
-        end
+        if idx ~= hoveredIndex then hoveredIndex = idx; renderRadialState() end
     end
 end)
 
---// CLIQUE NO SETOR LIVRE
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed or not mainContainer.Visible then return end
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -968,28 +966,36 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
---// UPDATE WHEEL SLOTS
+--// UPDATE SLOTS VISUAL
 updateWheelSlots = function()
     for i = 1, TOTAL_SLOTS do
         local item = catalogItems[i]
         local img = slotImages[i]
         local txt = slotTexts[i]
+        local star = slotStars[i]
 
         if item then
             txt.Visible = false
-            local eid = item.id or item.AssetId or item.Id
-            img.Image = "rbxthumb://type=Asset&id=" .. tostring(eid) .. "&w=150&h=150"
+            local eid = tostring(item.id or item.AssetId or item.Id)
+            img.Image = "rbxthumb://type=Asset&id=" .. eid .. "&w=150&h=150"
             img.Visible = true
+            star.Visible = true
+            
+            -- Checa se está favoritado para acender a estrela
+            local isStar = false
+            for _, sId in ipairs(starredEmotes) do if tostring(sId) == eid then isStar = true; break end end
+            star.ImageColor3 = isStar and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 150)
         else
             txt.Visible = true
             img.Image = ""
             img.Visible = false
+            star.Visible = false
         end
     end
     renderRadialState()
 end
 
---// LOADPAGE
+--// LOADPAGE (Com reset de seleção)
 loadPage = function(targetPage)
     searchToken = searchToken + 1
     local myToken = searchToken
@@ -1021,25 +1027,30 @@ loadPage = function(targetPage)
     pageTextBox.Text = tostring(currentPage)
     pageInfoLabel.Text = tostring(totalPages)
 
+    -- RESET DO GRADIENTE (Selected e Hover)
+    selectedIndex = nil
+    hoveredIndex = nil
+
     catalogItems = {}
     local startIdx = (currentPage - 1) * 8 + 1
     for j = 0, 7 do
         if filteredEmotes[startIdx + j] then table.insert(catalogItems, filteredEmotes[startIdx + j]) end
     end
     updateWheelSlots()
+    renderRadialState()
 
     if localCount < 8 and currentKeyword ~= "" and currentCategory == "All" then
         task.spawn(function()
             local apiList = FetchFromAPI(currentKeyword)
             if myToken ~= searchToken then return end
             if #apiList > 0 then
-                local merged = mergeNoDupes(filteredEmotes, apiList)
+                local merged = mergeNoDupes(filteredEmotes, apiList) -- (assumindo que você tenha mergeNoDupes)
                 filteredEmotes = merged; totalPages = math.max(1, math.ceil(#merged / 8))
                 local added = false
                 for _, novo in ipairs(apiList) do
                     if not emoteIndexById[tostring(novo.id)] then table.insert(allEmotes, novo); emoteIndexById[tostring(novo.id)] = novo; added = true end
                 end
-                if added then SaveEmoteCache() end
+                if added then SaveJSON(EMOTE_CACHE_FILE, allEmotes) end
                 if targetPage > totalPages then targetPage = totalPages end
                 currentPage = targetPage
                 pageTextBox.Text = tostring(currentPage)
@@ -1128,8 +1139,15 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 end)
 
 --// INIT
+local function mergeNoDupes(listA, listB)
+    local seen, out = {}, {}
+    for _, e in ipairs(listA) do local k = tostring(e.id); if not seen[k] then seen[k] = true; table.insert(out, e) end end
+    for _, e in ipairs(listB) do local k = tostring(e.id); if not seen[k] then seen[k] = true; table.insert(out, e) end end
+    return out
+end
+
 buildCategoriesMenu()
 loadPage(1)
 renderRadialState()
 
-print("✅ [7yd7] Visual exato aplicado!")
+print("✅ [7yd7] Script atualizado com Salvamento de Categorias, Favoritos (Estrelas) e Reset de Gradiente!")
