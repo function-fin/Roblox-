@@ -32,7 +32,7 @@ local ID_FECHAR_X = "rbxassetid://78774633521849"
 local ID_LAPIS = "rbxassetid://105157650009654"
 local ID_SETA_ESQUERDA = "rbxassetid://112363067871003"
 local ID_SETA_DIREITA = "rbxassetid://138794689086376"
-local ID_ESTRELA = "rbxassetid://77340475678237" 
+local ID_ESTRELA = "rbxassetid://77340475678237"
 
 local MARGIN = 14
 
@@ -66,7 +66,59 @@ local function SaveJSON(fileName, data)
     if writefile then pcall(function() writefile(fileName, HttpService:JSONEncode(data)) end) end
 end
 
---// CARREGAMENTO COM FALLBACK
+--// ============================================================
+--// HTTP ROBUSTO COM FALLBACK
+--// ============================================================
+local function fetchText(url)
+    local req = http_request or (syn and syn.request) or (fluxus and fluxus.request) or request
+
+    if req then
+        local ok, res = pcall(function()
+            return req({
+                Url = url,
+                Method = "GET",
+                Headers = { ["User-Agent"] = "Roblox/WinInet" }
+            })
+        end)
+        if ok and res and (res.StatusCode == 200 or res.Status == 200) and res.Body and #res.Body > 0 then
+            local low = res.Body:sub(1, 100):lower()
+            if not (low:find("<!doctype") or low:find("<html") or low:find("<head")) then
+                return res.Body
+            end
+            warn("[7yd7] request retornou HTML de erro (repo privado/branch errada?)")
+        end
+    end
+
+    local ok, res = pcall(function() return game:HttpGet(url) end)
+    if ok and res and #res > 0 then
+        local low = res:sub(1, 100):lower()
+        if not (low:find("<!doctype") or low:find("<html") or low:find("<head")) then
+            return res
+        end
+        warn("[7yd7] HttpGet retornou HTML de erro")
+    end
+
+    return nil
+end
+
+local function parseEmoteJson(raw)
+    if not raw then return nil end
+    local ok, decoded = pcall(function() return HttpService:JSONDecode(raw) end)
+    if not ok or type(decoded) ~= "table" then return nil end
+
+    local list = decoded.data or decoded
+    if type(list) ~= "table" then return nil end
+
+    local out = {}
+    for _, item in ipairs(list) do
+        local id = tonumber(item.id or item.Id or item.AssetId)
+        if id and id > 0 then
+            table.insert(out, {id = id, name = item.name or item.Name or ("Emote_" .. id)})
+        end
+    end
+    return #out > 0 and out or nil
+end
+
 local function FetchFromAPI(keyword)
     local out = {}
     local ok, pages = pcall(function()
@@ -89,45 +141,85 @@ local function FetchFromAPI(keyword)
     return out
 end
 
+local function RebuildIndex()
+    emoteIndexById = {}
+    for _, e in ipairs(allEmotes) do emoteIndexById[tostring(e.id)] = e end
+end
+
+local function mergeNoDupes(listA, listB)
+    local seen, out = {}, {}
+    for _, e in ipairs(listA) do
+        local k = tostring(e.id)
+        if not seen[k] then seen[k] = true; table.insert(out, e) end
+    end
+    for _, e in ipairs(listB) do
+        local k = tostring(e.id)
+        if not seen[k] then seen[k] = true; table.insert(out, e) end
+    end
+    return out
+end
+
+--// CARREGAMENTO IMEDIATO (não bloqueante)
 local cached = LoadJSON(EMOTE_CACHE_FILE, nil)
 if cached and #cached > 0 then
     allEmotes = cached
+    print("[7yd7] ✅ Cache carregado:", #allEmotes, "emotes")
 else
-    local g = pcall(function() return HttpService:JSONDecode(game:HttpGet(GITHUB_URL)).data end)
-    
-    if g and type(g) == "table" then
-        for _, item in ipairs(g) do
-            local id = tonumber(item.id)
-            if id and id > 0 then table.insert(allEmotes, {id = id, name = item.name or ("Emote_" .. id)}) end
-        end
-    end
-    
-    if #allEmotes == 0 then
-        local apiList = FetchFromAPI("")
-        if apiList and #apiList > 0 then allEmotes = apiList end
-    end
-    
-    if #allEmotes == 0 then
-        allEmotes = {
-            {id = 3360686498, name = "Stadium"},
-            {id = 3360692915, name = "Tilt"},
-            {id = 3576968026, name = "Shrug"},
-            {id = 3360689775, name = "Salute"}
-        }
-    end
-    
-    if #allEmotes > 0 then SaveJSON(EMOTE_CACHE_FILE, allEmotes) end
+    allEmotes = {
+        {id = 3360686498, name = "Stadium"},
+        {id = 3360692915, name = "Tilt"},
+        {id = 3576968026, name = "Shrug"},
+        {id = 3360689775, name = "Salute"}
+    }
+    print("[7yd7] ⚠️ Sem cache, usando 4 emotes temporários")
 end
 
 local loadedCategories = LoadJSON(CATEGORIES_FILE, { categories = {} })
-if loadedCategories and loadedCategories.categories then emoteData.categories = loadedCategories.categories end
+if loadedCategories and loadedCategories.categories then
+    emoteData.categories = loadedCategories.categories
+end
 
 local loadedStarred = LoadJSON(STARRED_FILE, {})
 if loadedStarred and type(loadedStarred) == "table" then starredEmotes = loadedStarred end
 
-local function RebuildIndex()
-    emoteIndexById = {}
-    for _, e in ipairs(allEmotes) do emoteIndexById[tostring(e.id)] = e end
+RebuildIndex()
+
+--// CARREGAMENTO EM BACKGROUND (GitHub + API + retry)
+local function refreshEmotesFromNetwork()
+    task.spawn(function()
+        local attempt = 0
+        while attempt < 10 do
+            attempt = attempt + 1
+            local raw = fetchText(GITHUB_URL)
+            local list = parseEmoteJson(raw)
+
+            if list and #list > 0 then
+                allEmotes = list
+                RebuildIndex()
+                SaveJSON(EMOTE_CACHE_FILE, allEmotes)
+                print("[7yd7] ✅ GitHub OK:", #allEmotes, "emotes (tentativa", attempt..")")
+                if loadPage then
+                    pcall(function() loadPage(currentPage or 1) end)
+                end
+                return
+            end
+
+            print("[7yd7] ⏳ Tentativa", attempt, "/10 falhou, aguardando 3s...")
+            task.wait(3)
+        end
+
+        print("[7yd7] ❌ GitHub falhou após 10 tentativas, tentando API...")
+        local apiList = FetchFromAPI("")
+        if apiList and #apiList > 0 then
+            allEmotes = apiList
+            RebuildIndex()
+            SaveJSON(EMOTE_CACHE_FILE, allEmotes)
+            print("[7yd7] ✅ Fallback API:", #allEmotes, "emotes")
+            if loadPage then pcall(function() loadPage(currentPage or 1) end) end
+        else
+            print("[7yd7] ❌ API também falhou. Mantendo emotes em cache/hardcoded.")
+        end
+    end)
 end
 
 local function smartSearchMatch(name, term)
@@ -159,12 +251,16 @@ local function applySearchLocal(term)
 
     local starredSet = {}
     for i, id in ipairs(starredEmotes) do starredSet[tostring(id)] = i end
-    
+
     local starredList, normalList = {}, {}
     for _, e in ipairs(out) do
-        if starredSet[tostring(e.id)] then table.insert(starredList, e) else table.insert(normalList, e) end
+        if starredSet[tostring(e.id)] then
+            table.insert(starredList, e)
+        else
+            table.insert(normalList, e)
+        end
     end
-    
+
     table.sort(starredList, function(a, b)
         return (starredSet[tostring(a.id)] or 9999) < (starredSet[tostring(b.id)] or 9999)
     end)
@@ -172,13 +268,11 @@ local function applySearchLocal(term)
     filteredEmotes = {}
     for _, e in ipairs(starredList) do table.insert(filteredEmotes, e) end
     for _, e in ipairs(normalList) do table.insert(filteredEmotes, e) end
-    
+
     return #filteredEmotes
 end
 
-RebuildIndex()
-
-local ActiveTracks = {} 
+local ActiveTracks = {}
 local currentCategory = "All"
 local currentPage = 1
 local totalPages = DEFAULT_TOTAL_PAGES
@@ -202,7 +296,6 @@ local function LoadTrack(id)
     pcall(function()
         local animator = hum:FindFirstChildOfClass("Animator")
         if animator then
-            
             if #ActiveTracks >= 6 then
                 local oldestTrack = table.remove(ActiveTracks, 1)
                 if oldestTrack and oldestTrack.IsPlaying then
@@ -221,12 +314,10 @@ local function LoadTrack(id)
             local anim = Instance.new("Animation")
             anim.AnimationId = animId
             local track = animator:LoadAnimation(anim)
-            
-            -- CORREÇÃO: Mudar para Action para permitir sobreposição
-            track.Priority = Enum.AnimationPriority.Action 
+            track.Priority = Enum.AnimationPriority.Action
             track.Looped = true
             track:Play(0.1, 1, Settings.Speed)
-            
+
             table.insert(ActiveTracks, track)
         end
     end)
@@ -240,9 +331,7 @@ RunService.RenderStepped:Connect(function()
             local jumped = humanoid and humanoid:GetState() == Enum.HumanoidStateType.Jumping
             if moved or jumped then
                 for _, track in ipairs(ActiveTracks) do
-                    if track.IsPlaying then 
-                        track:Stop(0.1) 
-                    end
+                    if track.IsPlaying then track:Stop(0.1) end
                 end
                 ActiveTracks = {}
             end
@@ -251,13 +340,22 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
+--// PARENT SEGURO
 local success, parentTarget = pcall(function()
-    if gethui then return gethui()
-    elseif syn and syn.protect_gui then
-        local gui = Instance.new("ScreenGui"); syn.protect_gui(gui); return gui
-    else return CoreGui end
+    if gethui then
+        local r = gethui()
+        if r then return r end
+    end
+    if syn and syn.protect_gui then
+        local gui = Instance.new("ScreenGui")
+        syn.protect_gui(gui)
+        return gui
+    end
+    return CoreGui
 end)
-if not success or not parentTarget then parentTarget = Players.LocalPlayer:WaitForChild("PlayerGui") end
+if not success or not parentTarget then
+    parentTarget = Players.LocalPlayer:WaitForChild("PlayerGui")
+end
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "EmoteRadialGui_Hybrid"
@@ -265,17 +363,15 @@ screenGui.ResetOnSpawn = false
 screenGui.IgnoreGuiInset = true
 screenGui.Parent = parentTarget
 
--- [SPWN] Atributos de identificação persistente
 screenGui:SetAttribute("SPWN_ManagedScriptID", "EmoteRadialScript")
 screenGui:SetAttribute("SPWN_ManagedScriptName", "Emote Radial Hybrid")
 screenGui:SetAttribute("SPWN_ManagedScriptCategory", "Emote Radial Hybrid")
 
--- [SPWN] Renomeado para OpenToggleButton (o Manager atua nele)
 local toggleButton = Instance.new("ImageButton")
 toggleButton.Name = "OpenToggleButton"
-toggleButton.Size = UDim2.new(0, 45, 0, 45) 
+toggleButton.Size = UDim2.new(0, 45, 0, 45)
 toggleButton.AnchorPoint = Vector2.new(0.5, 0.5)
-toggleButton.Position = UDim2.new(0.5, 0, 0, 40) 
+toggleButton.Position = UDim2.new(0.5, 0, 0, 40)
 toggleButton.BackgroundTransparency = 1
 toggleButton.Image = ID_BTN_EXTERNO
 toggleButton.Parent = screenGui
@@ -590,7 +686,7 @@ local function ShowToast(catName)
     toast.ZIndex = 99
     toast.Parent = screenGui
     Instance.new("UICorner", toast).CornerRadius = UDim.new(0, 8)
-    
+
     local stroke = Instance.new("UIStroke", toast)
     stroke.Color = Color3.fromRGB(255, 255, 255)
     stroke.Thickness = 2
@@ -627,7 +723,7 @@ end
 local saveModal = Instance.new("Frame")
 saveModal.Size = UDim2.fromOffset(336, 240)
 saveModal.AnchorPoint = Vector2.new(0.5, 0.5)
-saveModal.Position = UDim2.new(0.5, 160, 0.5, 0) 
+saveModal.Position = UDim2.new(0.5, 160, 0.5, 0)
 saveModal.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 saveModal.Visible = false; saveModal.ZIndex = 10; saveModal.Parent = mainContainer
 Instance.new("UICorner", saveModal).CornerRadius = UDim.new(0, 10)
@@ -964,7 +1060,7 @@ for i = 1, TOTAL_SLOTS do
         local item = catalogItems[i]
         if not item then return end
         local idStr = tostring(item.id or item.AssetId or item.Id)
-        
+
         local foundIdx = nil
         for idx, sId in ipairs(starredEmotes) do
             if tostring(sId) == idStr then foundIdx = idx; break end
@@ -991,7 +1087,7 @@ for i = 1, TOTAL_SLOTS do
             cartridgeButton.Visible = true
             LoadTrack(item.id or item.AssetId or item.Id)
             mainContainer.Visible = false
-            toggleButton.Visible = true 
+            toggleButton.Visible = true
         end
     end)
 
@@ -1010,7 +1106,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         local pos = Vector2.new(input.Position.X, input.Position.Y)
-        
+
         local function isPointInside(guiObject)
             if not guiObject or not guiObject.Visible then return false end
             local absPos = guiObject.AbsolutePosition
@@ -1042,8 +1138,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
             centerText.Text = item.name or item.Name or "Emote"
             cartridgeButton.Visible = true
             LoadTrack(item.id or item.AssetId or item.Id)
-            
-            mainContainer.Visible = false 
+
+            mainContainer.Visible = false
             toggleButton.Visible = true
         end
     end
@@ -1076,7 +1172,7 @@ updateWheelSlots = function()
             img.Image = "rbxthumb://type=Asset&id=" .. eid .. "&w=150&h=150"
             img.Visible = true
             star.Visible = true
-            
+
             local isStar = false
             for _, sId in ipairs(starredEmotes) do if tostring(sId) == eid then isStar = true; break end end
             star.ImageColor3 = isStar and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 150)
@@ -1111,7 +1207,7 @@ loadPage = function(targetPage)
             local eid = tostring(e.id or e.AssetId or e.Id)
             if catSet[eid] then table.insert(filtered, e) end
         end
-        
+
         if currentCategory ~= "All" then
             local catEmotesOrder = {}
             for _, cat in ipairs(emoteData.categories) do
@@ -1132,7 +1228,7 @@ loadPage = function(targetPage)
                 filtered = catEmotesOrder
             end
         end
-        
+
         filteredEmotes = filtered; localCount = #filteredEmotes
     end
 
@@ -1252,16 +1348,12 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
-local function mergeNoDupes(listA, listB)
-    local seen, out = {}, {}
-    for _, e in ipairs(listA) do local k = tostring(e.id); if not seen[k] then seen[k] = true; table.insert(out, e) end end
-    for _, e in ipairs(listB) do local k = tostring(e.id); if not seen[k] then seen[k] = true; table.insert(out, e) end end
-    return out
-end
-
 buildCategoriesMenu()
 loadPage(1)
 renderRadialState()
+
+--// INICIA BUSCA EM BACKGROUND (não bloqueia)
+refreshEmotesFromNetwork()
 
 --// SISTEMA SPWN (MANTIDO)
 task.spawn(function()
@@ -1309,5 +1401,3 @@ task.spawn(function()
         _G.ScriptManager.RegisterScript(scriptId, scriptConfig)
     end
 end)
-
-print("✅ [7yd7] Script atualizado com SPWN + Fallback Triplo + Priority Action!")
