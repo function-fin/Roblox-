@@ -159,7 +159,7 @@ local function mergeNoDupes(listA, listB)
     return out
 end
 
---// CARREGAMENTO IMEDIATO (não bloqueante)
+--// CARREGAMENTO IMEDIATO
 local cached = LoadJSON(EMOTE_CACHE_FILE, nil)
 if cached and #cached > 0 then
     allEmotes = cached
@@ -184,7 +184,7 @@ if loadedStarred and type(loadedStarred) == "table" then starredEmotes = loadedS
 
 RebuildIndex()
 
---// CARREGAMENTO EM BACKGROUND (GitHub + API + retry)
+--// CARREGAMENTO EM BACKGROUND
 local function refreshEmotesFromNetwork()
     task.spawn(function()
         local attempt = 0
@@ -284,6 +284,7 @@ local searchToken = 0
 
 local updateWheelSlots, loadPage, buildCategoriesMenu, openSaveModal
 
+--// TRACK (Ajustado para Prioridade Movement)
 local function LoadTrack(id)
     local char = LocalPlayer.Character
     if not char then return end
@@ -314,9 +315,13 @@ local function LoadTrack(id)
             local anim = Instance.new("Animation")
             anim.AnimationId = animId
             local track = animator:LoadAnimation(anim)
-            track.Priority = Enum.AnimationPriority.Action
+            
+            -- MUDANÇA AQUI: Movement em vez de Action
+            -- Isso faz o emote sobrepor o Idle (respiração) mas ser sobreposto por outros emotes (Action)
+            track.Priority = Enum.AnimationPriority.Movement
             track.Looped = true
             track:Play(0.1, 1, Settings.Speed)
+            track:AdjustWeight(1, 0) -- Força o peso para garantir que ele não morra
 
             table.insert(ActiveTracks, track)
         end
