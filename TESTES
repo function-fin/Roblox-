@@ -174,7 +174,6 @@ RebuildIndex()
 --// CARREGAMENTO EM BACKGROUND (GITHUB + API JUNTOS)
 local function refreshEmotesFromNetwork()
     task.spawn(function()
-        -- FASE 1: Tentar o GitHub
         local gitHubSuccess = false
         local attempt = 0
         
@@ -196,14 +195,11 @@ local function refreshEmotesFromNetwork()
             task.wait(2)
         end
 
-        -- FASE 2: Buscar na API do Roblox (independente do GitHub ter dado certo)
-        -- Isso traz os emotes mais recentes que ainda não foram adicionados no GitHub.
         print("[7yd7] 🔍 Buscando emotes novos na API do Roblox...")
         local apiList = FetchFromAPI("")
         
         if apiList and #apiList > 0 then
             local antes = #allEmotes
-            -- Mescla a lista do GitHub com os emotes novos da API
             allEmotes = mergeNoDupes(allEmotes, apiList)
             RebuildIndex()
             SaveJSON(EMOTE_CACHE_FILE, allEmotes)
@@ -365,6 +361,22 @@ screenGui.Name = "EmoteRadialGui_Hybrid"
 screenGui.ResetOnSpawn = false
 screenGui.IgnoreGuiInset = true
 screenGui.Parent = parentTarget
+
+-- =====================================================================
+-- ADAPTAÇÃO AUTOMÁTICA DE ESCALA (+70% NO PC, PADRÃO NO MOBILE)
+-- =====================================================================
+local uiScale = Instance.new("UIScale", screenGui)
+local function updateUIScale()
+    if not UserInputService.TouchEnabled then
+        uiScale.Scale = 1.7 -- Aumenta 70% no PC
+    else
+        uiScale.Scale = 1.0 -- Mantém tamanho padrão no mobile
+    end
+end
+updateUIScale()
+
+-- Atualiza escala se o dispositivo mudar (ex: notebook híbrido)
+UserInputService.LastInputTypeChanged:Connect(updateUIScale)
 
 screenGui:SetAttribute("SPWN_ManagedScriptID", "EmoteRadialScript")
 screenGui:SetAttribute("SPWN_ManagedScriptName", "Emote Radial Hybrid")
