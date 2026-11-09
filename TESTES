@@ -66,38 +66,27 @@ local function SaveJSON(fileName, data)
     if writefile then pcall(function() writefile(fileName, HttpService:JSONEncode(data)) end) end
 end
 
---// ============================================================
---// HTTP ROBUSTO COM FALLBACK
---// ============================================================
+--// HTTP ROBUSTO
 local function fetchText(url)
     local req = http_request or (syn and syn.request) or (fluxus and fluxus.request) or request
-
     if req then
         local ok, res = pcall(function()
-            return req({
-                Url = url,
-                Method = "GET",
-                Headers = { ["User-Agent"] = "Roblox/WinInet" }
-            })
+            return req({ Url = url, Method = "GET", Headers = { ["User-Agent"] = "Roblox/WinInet" } })
         end)
         if ok and res and (res.StatusCode == 200 or res.Status == 200) and res.Body and #res.Body > 0 then
             local low = res.Body:sub(1, 100):lower()
             if not (low:find("<!doctype") or low:find("<html") or low:find("<head")) then
                 return res.Body
             end
-            warn("[7yd7] request retornou HTML de erro (repo privado/branch errada?)")
         end
     end
-
     local ok, res = pcall(function() return game:HttpGet(url) end)
     if ok and res and #res > 0 then
         local low = res:sub(1, 100):lower()
         if not (low:find("<!doctype") or low:find("<html") or low:find("<head")) then
             return res
         end
-        warn("[7yd7] HttpGet retornou HTML de erro")
     end
-
     return nil
 end
 
@@ -105,10 +94,8 @@ local function parseEmoteJson(raw)
     if not raw then return nil end
     local ok, decoded = pcall(function() return HttpService:JSONDecode(raw) end)
     if not ok or type(decoded) ~= "table" then return nil end
-
     local list = decoded.data or decoded
     if type(list) ~= "table" then return nil end
-
     local out = {}
     for _, item in ipairs(list) do
         local id = tonumber(item.id or item.Id or item.AssetId)
@@ -184,11 +171,14 @@ if loadedStarred and type(loadedStarred) == "table" then starredEmotes = loadedS
 
 RebuildIndex()
 
---// CARREGAMENTO EM BACKGROUND
+--// CARREGAMENTO EM BACKGROUND (GITHUB + API JUNTOS)
 local function refreshEmotesFromNetwork()
     task.spawn(function()
+        -- FASE 1: Tentar o GitHub
+        local gitHubSuccess = false
         local attempt = 0
-        while attempt < 10 do
+        
+        while attempt < 5 do
             attempt = attempt + 1
             local raw = fetchText(GITHUB_URL)
             local list = parseEmoteJson(raw)
@@ -198,26 +188,36 @@ local function refreshEmotesFromNetwork()
                 RebuildIndex()
                 SaveJSON(EMOTE_CACHE_FILE, allEmotes)
                 print("[7yd7] ✅ GitHub OK:", #allEmotes, "emotes (tentativa", attempt..")")
-                if loadPage then
-                    pcall(function() loadPage(currentPage or 1) end)
-                end
-                return
+                if loadPage then pcall(function() loadPage(currentPage or 1) end) end
+                gitHubSuccess = true
+                break
             end
-
-            print("[7yd7] ⏳ Tentativa", attempt, "/10 falhou, aguardando 3s...")
-            task.wait(3)
+            print("[7yd7] ⏳ Tentativa GitHub", attempt, "/5 falhou, aguardando 2s...")
+            task.wait(2)
         end
 
-        print("[7yd7] ❌ GitHub falhou após 10 tentativas, tentando API...")
+        -- FASE 2: Buscar na API do Roblox (independente do GitHub ter dado certo)
+        -- Isso traz os emotes mais recentes que ainda não foram adicionados no GitHub.
+        print("[7yd7] 🔍 Buscando emotes novos na API do Roblox...")
         local apiList = FetchFromAPI("")
+        
         if apiList and #apiList > 0 then
-            allEmotes = apiList
+            local antes = #allEmotes
+            -- Mescla a lista do GitHub com os emotes novos da API
+            allEmotes = mergeNoDupes(allEmotes, apiList)
             RebuildIndex()
             SaveJSON(EMOTE_CACHE_FILE, allEmotes)
-            print("[7yd7] ✅ Fallback API:", #allEmotes, "emotes")
+            
+            local novos = #allEmotes - antes
+            print("[7yd7] ✅ API do Roblox OK! Adicionou", novos, "emotes novos. Total agora:", #allEmotes)
+            
             if loadPage then pcall(function() loadPage(currentPage or 1) end) end
         else
-            print("[7yd7] ❌ API também falhou. Mantendo emotes em cache/hardcoded.")
+            print("[7yd7] ⚠️ API do Roblox não retornou emotes novos.")
+        end
+
+        if not gitHubSuccess and #allEmotes <= 4 then
+            print("[7yd7] ❌ Tudo falhou. Mantendo emotes temporários.")
         end
     end)
 end
@@ -284,7 +284,7 @@ local searchToken = 0
 
 local updateWheelSlots, loadPage, buildCategoriesMenu, openSaveModal
 
---// TRACK (Ajustado para Prioridade Movement)
+--// TRACK (Prioridade Movement)
 local function LoadTrack(id)
     local char = LocalPlayer.Character
     if not char then return end
@@ -316,12 +316,10 @@ local function LoadTrack(id)
             anim.AnimationId = animId
             local track = animator:LoadAnimation(anim)
             
-            -- MUDANÇA AQUI: Movement em vez de Action
-            -- Isso faz o emote sobrepor o Idle (respiração) mas ser sobreposto por outros emotes (Action)
             track.Priority = Enum.AnimationPriority.Movement
             track.Looped = true
             track:Play(0.1, 1, Settings.Speed)
-            track:AdjustWeight(1, 0) -- Força o peso para garantir que ele não morra
+            track:AdjustWeight(1, 0)
 
             table.insert(ActiveTracks, track)
         end
@@ -1357,7 +1355,7 @@ buildCategoriesMenu()
 loadPage(1)
 renderRadialState()
 
---// INICIA BUSCA EM BACKGROUND (não bloqueia)
+--// INICIA BUSCA EM BACKGROUND (GitHub + API juntos)
 refreshEmotesFromNetwork()
 
 --// SISTEMA SPWN (MANTIDO)
